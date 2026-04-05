@@ -30,7 +30,7 @@ async function loadCartridgeController(): Promise<void> {
   try {
     // Try to import from npm package
     const module = await import('@cartridge/controller');
-    CartridgeControllerClass = module.CartridgeController || module.default;
+    CartridgeControllerClass = (module as any).CartridgeController || module.default;
     console.log('✅ Cartridge Controller loaded from npm package');
   } catch (error) {
     console.error('❌ Failed to load Cartridge Controller:', error);
