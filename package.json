@@ -1,5 +1,12 @@
 {
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build"
+  },
   "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
     "starknet": "^7.6.4"
+  },
+  "devDependencies": {
+    "@vercel/node": "^5.7.0"
   }
 }
