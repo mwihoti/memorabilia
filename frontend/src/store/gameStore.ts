@@ -12,6 +12,7 @@ import { submitScore } from '../lib/api';
 interface GameStore {
   // User & Account
   telegramUser: TelegramUser | null;
+  playerName: string | null;
   account: Account | null;
   isAccountLoading: boolean;
 
@@ -43,6 +44,7 @@ interface GameStore {
 
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
+  setPlayerName: (name: string) => void;
   setAccount: (account: Account | null) => void;
   setGameController: (controller: GameController | null) => void;
 
@@ -73,6 +75,7 @@ interface GameStore {
 export const useGameStore = create<GameStore>((set, get) => ({
   // Initial State
   telegramUser: null,
+  playerName: localStorage.getItem('memorabilia_player_name') || null,
   account: null,
   isAccountLoading: false,
 
@@ -101,6 +104,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
+  setPlayerName: (name) => set({ playerName: name }),
   setAccount: (account) => set({ account }),
   setGameController: (controller) => set({ gameController: controller }),
 
@@ -390,10 +394,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
           set({ currentGame: finalGame });
 
           // Save score to local storage
-          const { telegramUser } = get();
+          const { telegramUser, playerName: storedName } = get();
           if (telegramUser) {
             const elapsedTime = Math.floor((Date.now() - currentGame.started_at) / 1000);
-            const playerName = telegramUser.first_name || 'Anonymous Player';
+            const playerName = storedName || telegramUser.first_name || 'Anonymous Player';
             
             console.log('🎯 Game Completed - Saving Score:', {
               telegramId: telegramUser.id,

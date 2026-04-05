@@ -56,24 +56,14 @@ export function initTelegramApp(): TelegramUser | null {
 }
 
 /**
- * Get Telegram user or create mock user for development
+ * Get authenticated Telegram user.
+ * Returns null if not inside Telegram or user data is unavailable.
+ * No fallback — unauthenticated users must open the game via Telegram.
  */
-export function getTelegramUser(): TelegramUser {
+export function getTelegramUser(): TelegramUser | null {
   const webApp = getTelegramWebApp();
-  const user = webApp?.initDataUnsafe.user;
-  
-  if (user) {
-    return user;
-  }
-  
-  // Mock user for development - using real Telegram user info
-  console.log('🔧 Using Telegram user for development');
-  return {
-    id: 452595366,
-    first_name: 'Dan🐾',
-    username: 'Mwihoti',
-    language_code: 'en',
-  };
+  if (!webApp) return null;
+  return webApp.initDataUnsafe.user ?? null;
 }
 
 /**

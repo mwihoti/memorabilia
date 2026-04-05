@@ -7,96 +7,146 @@ interface CardProps {
   isMatched: boolean;
   onClick: () => void;
   disabled?: boolean;
+  index?: number;       // for staggered entrance
+  isMismatched?: boolean; // triggers shake
 }
 
-export default function Card({ emoji, isFlipped, isMatched, onClick, disabled }: CardProps) {
+export default function Card({
+  emoji,
+  isFlipped,
+  isMatched,
+  onClick,
+  disabled,
+  index = 0,
+  isMismatched = false,
+}: CardProps) {
   const handleClick = () => {
-    if (disabled || isMatched) return;
+    if (disabled || isMatched || isFlipped) return;
     hapticImpact('light');
     onClick();
   };
 
   return (
     <motion.div
-      className="aspect-square cursor-pointer"
-      whileHover={!disabled && !isMatched ? { scale: 1.05 } : {}}
-      whileTap={!disabled && !isMatched ? { scale: 0.95 } : {}}
+      className="aspect-square cursor-pointer select-none"
+      // Staggered entrance: each card flies in from a random direction
+      initial={{ opacity: 0, scale: 0.4, y: (index % 3 === 0 ? -30 : index % 3 === 1 ? 30 : 0) }}
+      animate={{
+        opacity: 1,
+        scale: 1,
+        y: 0,
+        // Shake on mismatch
+        x: isMismatched ? [0, -8, 8, -6, 6, -3, 3, 0] : 0,
+      }}
+      transition={{
+        // Entrance stagger
+        opacity:  { delay: index * 0.04, duration: 0.25 },
+        scale:    { delay: index * 0.04, duration: 0.3, type: 'spring', stiffness: 220, damping: 18 },
+        y:        { delay: index * 0.04, duration: 0.3, type: 'spring' },
+        // Shake
+        x: isMismatched ? { duration: 0.4, ease: 'easeInOut' } : {},
+      }}
+      whileHover={!disabled && !isMatched && !isFlipped ? { scale: 1.08, y: -3 } : {}}
+      whileTap={!disabled && !isMatched ? { scale: 0.92 } : {}}
       onClick={handleClick}
     >
-      <div className="relative w-full h-full" style={{ perspective: '1000px' }}>
+      <div className="relative w-full h-full" style={{ perspective: '800px' }}>
         <motion.div
           className="w-full h-full relative"
           initial={false}
           animate={{ rotateY: isFlipped || isMatched ? 180 : 0 }}
-          transition={{ duration: 0.25, ease: 'easeInOut' }}
+          transition={{ duration: 0.13, ease: [0.4, 0, 0.2, 1] }}
           style={{ transformStyle: 'preserve-3d' }}
         >
-          {/* Card Back (Face Down) */}
+          {/* ── Card Back ─────────────────────────────────────────────────── */}
           <div
-            className="absolute w-full h-full rounded-2xl flex items-center justify-center shadow-lg"
+            className="absolute w-full h-full rounded-xl overflow-hidden"
             style={{ backfaceVisibility: 'hidden' }}
           >
             <div className={`
-              w-full h-full rounded-2xl flex items-center justify-center relative overflow-hidden
-              bg-gradient-to-br from-museum-bronze-600 via-museum-bronze-500 to-museum-gold-600
-              border-4 border-museum-bronze-400/50
-              ${!disabled && !isMatched ? 'hover:border-museum-gold-400/70' : ''}
-              transition-all duration-200
-              shadow-xl
+              w-full h-full rounded-xl flex items-center justify-center relative
+              bg-gradient-to-br from-museum-bronze-700 via-museum-bronze-600 to-museum-gold-700
+              border-2 border-museum-bronze-400/60
+              shadow-lg transition-colors duration-150
+              ${!disabled && !isMatched ? 'hover:border-museum-gold-300/80' : ''}
             `}>
-              {/* Ancient pattern overlay */}
-              <div className="absolute inset-0 opacity-30">
-                <div className="absolute inset-0" style={{
-                  backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(250,204,21,.3) 10px, rgba(250,204,21,.3) 20px)'
-                }}></div>
-              </div>
+              {/* SVG ornamental pattern */}
+              <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <pattern id={`tile-${index}`} x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse">
+                    <circle cx="8" cy="8" r="1.5" fill="rgba(250,204,21,0.8)" />
+                    <path d="M0 0 L8 8 L16 0 M0 16 L8 8 L16 16" stroke="rgba(250,204,21,0.4)" strokeWidth="0.5" fill="none" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill={`url(#tile-${index})`} />
+              </svg>
 
-              {/* Museum Logo */}
-              <div className="text-5xl sm:text-6xl md:text-7xl filter drop-shadow-lg z-10">
+              {/* Ornamental border */}
+              <div className="absolute inset-[3px] rounded-lg border border-museum-gold-400/30 pointer-events-none" />
+              <div className="absolute inset-[6px] rounded-md border border-museum-gold-400/15 pointer-events-none" />
+
+              {/* Center symbol */}
+              <motion.div
+                className="text-2xl sm:text-3xl z-10 filter drop-shadow-lg"
+                animate={!disabled ? {
+                  scale: [1, 1.06, 1],
+                  opacity: [0.9, 1, 0.9],
+                } : {}}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: index * 0.15 }}
+              >
                 🏛️
-              </div>
+              </motion.div>
             </div>
           </div>
 
-          {/* Card Front (Face Up) */}
+          {/* ── Card Front ────────────────────────────────────────────────── */}
           <div
-            className="absolute w-full h-full rounded-2xl flex items-center justify-center shadow-lg"
-            style={{
-              backfaceVisibility: 'hidden',
-              transform: 'rotateY(180deg)'
-            }}
+            className="absolute w-full h-full rounded-xl overflow-hidden"
+            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
           >
             <div className={`
-              w-full h-full rounded-2xl flex items-center justify-center relative
+              w-full h-full rounded-xl flex items-center justify-center relative
+              border-2 shadow-lg
               ${isMatched
-                ? 'bg-gradient-to-br from-museum-gold-400 via-museum-gold-500 to-museum-bronze-500 border-4 border-museum-gold-300 shadow-museum-gold-500/50'
-                : 'bg-gradient-to-br from-museum-sand-100 to-museum-sand-200 border-4 border-museum-stone-300'
+                ? 'bg-gradient-to-br from-museum-gold-400 via-museum-gold-500 to-museum-bronze-500 border-museum-gold-300 shadow-museum-gold-500/40'
+                : 'bg-gradient-to-br from-museum-stone-100 to-museum-sand-200 border-museum-stone-300'
               }
-              transition-all duration-300
-              shadow-xl
+              transition-colors duration-200
             `}>
-              {/* Matched effect */}
+              {/* Match burst */}
               {isMatched && (
                 <motion.div
-                  className="absolute inset-0 bg-museum-gold-300/30 rounded-2xl"
-                  initial={{ scale: 0, opacity: 1 }}
-                  animate={{ scale: 2, opacity: 0 }}
-                  transition={{ duration: 0.6 }}
+                  className="absolute inset-0 rounded-xl"
+                  initial={{ scale: 0.6, opacity: 0.9 }}
+                  animate={{ scale: 2.2, opacity: 0 }}
+                  transition={{ duration: 0.5 }}
+                  style={{ background: 'radial-gradient(circle, rgba(250,204,21,0.6) 0%, transparent 70%)' }}
                 />
               )}
 
-              {/* Artifact Emoji */}
+              {/* Emoji */}
               <motion.div
-                className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl filter drop-shadow-md z-10"
+                className="text-2xl sm:text-3xl md:text-4xl filter drop-shadow-md z-10"
                 initial={false}
                 animate={isMatched ? {
-                  scale: [1, 1.3, 1],
-                  rotate: [0, 15, -15, 0]
-                } : {}}
-                transition={{ duration: 0.4 }}
+                  scale: [1, 1.4, 1.1],
+                  rotate: [0, 12, -12, 0],
+                } : { scale: 1, rotate: 0 }}
+                transition={{ duration: 0.35, ease: 'backOut' }}
               >
                 {emoji}
               </motion.div>
+
+              {/* Matched checkmark */}
+              {isMatched && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="absolute bottom-1 right-1 text-xs"
+                >
+                  ✓
+                </motion.div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -104,4 +154,3 @@ export default function Card({ emoji, isFlipped, isMatched, onClick, disabled }:
     </motion.div>
   );
 }
-

@@ -6,6 +6,7 @@ import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp } fr
 
 // Components
 import LoadingScreen from './components/LoadingScreen';
+import NameEntry from './components/NameEntry';
 import DifficultySelector from './components/DifficultySelector';
 import GameBoard from './components/GameBoard';
 import WinModal from './components/WinModal';
@@ -15,16 +16,18 @@ import TelegramRequired from './components/TelegramRequired';
 import UserDashboard from './components/UserDashboard';
 import Waves from './components/Waves';
 
-type Screen = 'loading' | 'difficulty' | 'game' | 'leaderboard' | 'dashboard';
+type Screen = 'loading' | 'name-entry' | 'difficulty' | 'game' | 'leaderboard' | 'dashboard';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [isInitializing, setIsInitializing] = useState(true);
   
   const {
+    telegramUser,
     setTelegramUser,
     setAccount,
     setGameController,
+    playerName,
     currentGame,
     showWinModal,
     resetGame,
@@ -36,9 +39,8 @@ function App() {
       try {
         console.log('🚀 Initializing Memorabilia...');
 
-        // Initialize Telegram
-        const telegramUser = initTelegramApp();
-        const user = telegramUser || getTelegramUser();
+        // Initialize Telegram — get real user, no fallback
+        const user = initTelegramApp() ?? getTelegramUser();
         setTelegramUser(user);
 
         // Apply Telegram theme
@@ -52,11 +54,10 @@ function App() {
 
         if (isDemoMode) {
           console.log('🎮 Running in DEMO MODE (no blockchain required)');
-          console.log('💡 To enable blockchain features, deploy contracts and set VITE_WORLD_ADDRESS in .env');
-
-          // Skip Dojo setup in demo mode
           setIsInitializing(false);
-          setScreen('difficulty');
+          // If player already has a name stored, skip name entry
+          const savedName = localStorage.getItem('memorabilia_player_name');
+          setScreen(savedName ? 'difficulty' : 'name-entry');
         } else {
           console.log('⛓️ Running in BLOCKCHAIN MODE');
 
@@ -72,15 +73,15 @@ function App() {
           setGameController(controller);
 
           console.log('✅ Blockchain initialization complete!');
-
           setIsInitializing(false);
-          setScreen('difficulty');
+          const savedName = localStorage.getItem('memorabilia_player_name');
+          setScreen(savedName ? 'difficulty' : 'name-entry');
         }
       } catch (error) {
         console.error('❌ Initialization failed:', error);
-        console.log('🎮 Falling back to DEMO MODE');
         setIsInitializing(false);
-        setScreen('difficulty');
+        const savedName = localStorage.getItem('memorabilia_player_name');
+        setScreen(savedName ? 'difficulty' : 'name-entry');
       }
     }
 
@@ -94,7 +95,6 @@ function App() {
     }
   }, [currentGame, screen]);
 
-  // Handle win modal close
   const handleWinModalClose = () => {
     resetGame();
     setScreen('difficulty');
@@ -121,16 +121,19 @@ function App() {
     }
   };
 
-  // Check if running in Telegram
-  const isInTelegram = isTelegramWebApp();
+  // Always show loading first while we initialise
+  if (isInitializing) {
+    return <LoadingScreen />;
+  }
 
-  // Show Telegram required screen if not in Telegram
-  if (!isInTelegram) {
+  // Gate 1 — must be inside Telegram WebApp
+  if (!isTelegramWebApp()) {
     return <TelegramRequired />;
   }
 
-  if (isInitializing) {
-    return <LoadingScreen />;
+  // Gate 2 — Telegram must have provided real user data
+  if (!telegramUser || telegramUser.id === 0) {
+    return <TelegramRequired />;
   }
 
   return (
@@ -149,14 +152,20 @@ function App() {
         maxCursorMove={100}
       />
       <div className="relative z-10">
-        <Header
-          onShowLeaderboard={handleShowLeaderboard}
-          onBackToDifficulty={handleBackToDifficulty}
-          onShowDashboard={handleShowDashboard}
-          currentScreen={screen}
-        />
+        {screen !== 'name-entry' && (
+          <Header
+            onShowLeaderboard={handleShowLeaderboard}
+            onBackToDifficulty={handleBackToDifficulty}
+            onShowDashboard={handleShowDashboard}
+            currentScreen={screen}
+          />
+        )}
 
         <main className="container mx-auto px-4 py-8">
+          {screen === 'name-entry' && (
+            <NameEntry onContinue={() => setScreen('difficulty')} />
+          )}
+
           {screen === 'difficulty' && (
             <DifficultySelector onStart={() => setScreen('game')} />
           )}

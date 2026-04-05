@@ -185,21 +185,21 @@ export interface GameConfig {
 export const GAME_CONFIGS: Record<Difficulty, GameConfig> = {
   [Difficulty.Easy]: {
     difficulty: Difficulty.Easy,
-    cardCount: 8,
-    pairCount: 4,
-    optimalMoves: 8,
+    cardCount: 12,
+    pairCount: 6,
+    optimalMoves: 12,
   },
   [Difficulty.Medium]: {
     difficulty: Difficulty.Medium,
-    cardCount: 16,
-    pairCount: 8,
-    optimalMoves: 16,
+    cardCount: 20,
+    pairCount: 10,
+    optimalMoves: 20,
   },
   [Difficulty.Hard]: {
     difficulty: Difficulty.Hard,
-    cardCount: 24,
-    pairCount: 12,
-    optimalMoves: 24,
+    cardCount: 30,
+    pairCount: 15,
+    optimalMoves: 30,
   },
 };
 

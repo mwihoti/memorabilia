@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { Difficulty, GAME_CONFIGS } from '../types';
 import { hapticImpact } from '../telegram/telegram';
@@ -9,7 +10,8 @@ interface DifficultySelectorProps {
 
 export default function DifficultySelector({ onStart }: DifficultySelectorProps) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
-  const { startNewGame, isGameLoading } = useGameStore();
+  const { startNewGame, isGameLoading, playerName, telegramUser } = useGameStore();
+  const displayName = playerName || telegramUser?.first_name || 'Curator';
 
   const handleSelectDifficulty = (difficulty: Difficulty) => {
     hapticImpact('light');
@@ -31,7 +33,8 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
       emoji: '🏺',
       color: 'from-museum-bronze-500 to-museum-bronze-700',
       borderColor: 'border-museum-bronze-500',
-      description: '4 artifacts • 8 cards',
+      description: '6 artifacts • 12 cards',
+      time: '~2 min',
     },
     {
       level: Difficulty.Medium,
@@ -39,7 +42,8 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
       emoji: '⚔️',
       color: 'from-museum-stone-600 to-museum-stone-800',
       borderColor: 'border-museum-stone-600',
-      description: '8 artifacts • 16 cards',
+      description: '10 artifacts • 20 cards',
+      time: '~4 min',
     },
     {
       level: Difficulty.Hard,
@@ -47,18 +51,26 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
       emoji: '🚀',
       color: 'from-museum-blue-600 to-museum-blue-800',
       borderColor: 'border-museum-blue-600',
-      description: '12 artifacts • 24 cards',
+      description: '15 artifacts • 30 cards',
+      time: '~7 min',
     },
   ];
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="text-center mb-12">
-        <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-museum-gold-500 to-museum-bronze-600 bg-clip-text text-transparent">
-          Choose Your Time Period
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center mb-10"
+      >
+        <p className="text-museum-gold-400 text-sm font-semibold tracking-wider uppercase mb-2">
+          Welcome back, {displayName}!
+        </p>
+        <h2 className="text-4xl font-bold mb-3 bg-gradient-to-r from-museum-gold-500 to-museum-bronze-600 bg-clip-text text-transparent">
+          Choose Your Era
         </h2>
-        <p className="text-[#FCFFF7]">Select an era to begin discovering artifacts</p>
-      </div>
+        <p className="text-[#FCFFF7]/70">Select a time period to discover artifacts</p>
+      </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {difficulties.map((diff) => {
@@ -84,18 +96,18 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
               {/* Name */}
               <h3 className="text-2xl font-bold mb-2 text-[#FCFFF7]">{diff.name}</h3>
               
-              {/* Description */}
-              <p className="text-sm text-[#FCFFF7] mb-4">{diff.description}</p>
-              
+                  {/* Description */}
+              <p className="text-sm text-[#FCFFF7]/80 mb-3">{diff.description}</p>
+
               {/* Stats */}
-              <div className="space-y-2 text-sm">
+              <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-[#FCFFF7]/80">Optimal Moves:</span>
+                  <span className="text-[#FCFFF7]/60">Optimal moves:</span>
                   <span className="font-bold text-[#FCFFF7]">{config.optimalMoves}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#FCFFF7]/80">Era:</span>
-                  <span className="font-bold text-[#FCFFF7]">{diff.name}</span>
+                  <span className="text-[#FCFFF7]/60">Est. time:</span>
+                  <span className="font-bold text-museum-gold-300">{diff.time}</span>
                 </div>
               </div>
               
