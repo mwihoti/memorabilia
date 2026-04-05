@@ -5,6 +5,7 @@ import { useGameStore } from '../store/gameStore';
 import { calculateStars, calculateGrade, GAME_CONFIGS } from '../types';
 import { hapticNotification } from '../telegram/telegram';
 import { isScoreEligibleForNFT } from '../cartridge/config';
+import { fetchPlayerStats } from '../lib/api';
 
 interface WinModalProps {
   onClose: () => void;
@@ -24,15 +25,32 @@ export default function WinModal({ onClose }: WinModalProps) {
 
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [playerRank, setPlayerRank] = useState<number | null>(null);
+  const [totalPlayers, setTotalPlayers] = useState<number | null>(null);
 
   useEffect(() => {
     hapticNotification('success');
-    
-    // Auto-submit score to leaderboard when modal opens
+
     if (currentGame && !scoreSubmitted) {
       submitScoreToLeaderboard();
     }
   }, [currentGame?.game_id]);
+
+  // Poll for rank after submission
+  useEffect(() => {
+    if (!scoreSubmitted || !telegramUser) return;
+    const timer = setTimeout(async () => {
+      try {
+        const stats = await fetchPlayerStats(telegramUser.id);
+        if (stats) {
+          setPlayerRank(stats.rank);
+        }
+      } catch {
+        // rank display is optional — ignore failures
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [scoreSubmitted, telegramUser]);
 
   if (!currentGame) return null;
 
@@ -190,7 +208,13 @@ export default function WinModal({ onClose }: WinModalProps) {
                 <span className="text-2xl">🏅</span>
                 <div className="flex-1">
                   <p className="text-sm font-bold text-museum-gold-400">Added to Hall of Fame!</p>
-                  <p className="text-xs text-museum-stone-400">Your score is now on the leaderboard</p>
+                  {playerRank ? (
+                    <p className="text-xs text-museum-stone-400">
+                      You are ranked <span className="text-museum-gold-400 font-bold">#{playerRank}</span> globally
+                    </p>
+                  ) : (
+                    <p className="text-xs text-museum-stone-400">Your score is now on the leaderboard</p>
+                  )}
                 </div>
               </motion.div>
             )}

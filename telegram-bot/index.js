@@ -6,6 +6,17 @@ dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://memorabilia-game-6gmm06lfd-mwihotis-projects.vercel.app';
+const API_URL = process.env.API_URL || WEB_APP_URL;
+
+async function getLiveLeaderboard() {
+  try {
+    const res = await fetch(`${API_URL}/api/leaderboard?limit=5`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
 
 console.log('🤖 Starting Memorabilia Telegram Bot...');
 console.log(`🎮 Web App URL: ${WEB_APP_URL}`);
@@ -117,32 +128,34 @@ bot.command('help', (ctx) => {
   );
 });
 
-// /leaderboard command
-bot.command('leaderboard', (ctx) => {
-  return ctx.reply(
-    '🏆 *Leaderboard*\n\n' +
-    'The leaderboard is available inside the game!\n\n' +
-    'Launch the game to see:\n' +
-    '• Top players\n' +
-    '• High scores\n' +
-    '• Your ranking\n\n' +
-    'Compete with players worldwide! 🌍',
-    {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: '🎮 View Leaderboard',
-              web_app: {
-                url: WEB_APP_URL
-              }
-            }
-          ]
-        ]
-      }
-    }
-  );
+// /leaderboard command — shows live top 5 from Neon DB
+bot.command('leaderboard', async (ctx) => {
+  const data = await getLiveLeaderboard();
+
+  let text = '🏆 *Hall of Fame*\n\n';
+
+  if (data && data.entries && data.entries.length > 0) {
+    const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+    data.entries.forEach((entry, i) => {
+      const medal = medals[i] || `${i + 1}.`;
+      const name = entry.display_name.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+      text += `${medal} *${name}*\n`;
+      text += `   Score: \`${entry.best_score.toLocaleString()}\` · ${entry.total_games} games\n\n`;
+    });
+    text += `_${data.total} players competing worldwide_ 🌍`;
+  } else {
+    text += 'No scores yet — be the first to play! 🎮';
+  }
+
+  return ctx.reply(text, {
+    parse_mode: 'MarkdownV2',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🎮 Play & Compete', web_app: { url: WEB_APP_URL } }],
+        [{ text: '🏆 Full Leaderboard', web_app: { url: WEB_APP_URL } }],
+      ],
+    },
+  });
 });
 
 // /about command
@@ -204,23 +217,27 @@ bot.on('callback_query', async (ctx) => {
     );
   } else if (data === 'leaderboard') {
     await ctx.answerCbQuery();
-    return ctx.reply(
-      '🏆 Launch the game to view the leaderboard!',
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🎮 View Leaderboard',
-                web_app: {
-                  url: WEB_APP_URL
-                }
-              }
-            ]
-          ]
-        }
-      }
-    );
+    // Fetch live leaderboard
+    const lbData = await getLiveLeaderboard();
+    let text = '🏆 *Hall of Fame*\n\n';
+    if (lbData && lbData.entries && lbData.entries.length > 0) {
+      const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+      lbData.entries.forEach((entry, i) => {
+        const medal = medals[i] || `${i + 1}.`;
+        const name = entry.display_name.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+        text += `${medal} *${name}* — \`${entry.best_score.toLocaleString()}\`\n`;
+      });
+    } else {
+      text += 'No scores yet\\! Be the first 🎮';
+    }
+    return ctx.reply(text, {
+      parse_mode: 'MarkdownV2',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎮 Play & Compete', web_app: { url: WEB_APP_URL } }],
+        ],
+      },
+    });
   }
 });
 

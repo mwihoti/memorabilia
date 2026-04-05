@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { Account } from 'starknet';
-import { GameState, Difficulty, Card, PlayerStats, LeaderboardEntry, TelegramUser } from '../types';
+import { GameState, Difficulty, Card, PlayerStats, LeaderboardEntry, TelegramUser, GAME_CONFIGS, calculateStars } from '../types';
 import { GameController } from '../dojo/gameController';
 import { createDemoGame, checkCardsMatch, calculateScore, getEmojisForDifficulty } from './demoGame';
 import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } from '../utils/sounds';
 import { cartridgeController } from '../cartridge/CartridgeController';
 import { mintScoreNFT } from '../cartridge/nftMinter';
 import { addGameScore } from './playerStorage';
+import { submitScore } from '../lib/api';
 
 interface GameStore {
   // User & Account
@@ -412,7 +413,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
               elapsedTime,
               true // isWin
             );
-            
+
+            // Submit to Neon DB (non-blocking — don't await so game flow continues)
+            const config = GAME_CONFIGS[finalGame.difficulty];
+            const stars = calculateStars(finalGame.moves, config.optimalMoves);
+
+            submitScore({
+              telegramUser: {
+                id: telegramUser.id,
+                username: telegramUser.username,
+                first_name: telegramUser.first_name,
+                last_name: telegramUser.last_name,
+              },
+              score: finalGame.score,
+              difficulty: finalGame.difficulty,
+              moves: finalGame.moves,
+              timeSeconds: elapsedTime,
+              stars,
+            })
+              .then((result) => {
+                console.log(`✅ Score saved to Neon — Rank #${result.rank} of ${result.totalPlayers}${result.isNewBest ? ' (new personal best!)' : ''}`);
+              })
+              .catch((err) => {
+                console.warn('⚠️ Neon score submit failed (localStorage still saved):', err.message);
+              });
+
             console.log('✅ Score saved to player dashboard');
           } else {
             console.warn('⚠️ No telegram user found, score not saved');

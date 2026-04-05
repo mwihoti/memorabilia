@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAllPlayers, getLeaderboard, getLeaderboardStats, LocalPlayerData, LocalLeaderboardEntry, clearAllData, createTestPlayer } from '../store/playerStorage';
+import { fetchLeaderboard, LeaderboardRow } from '../lib/api';
 import './UserDashboard.css';
 
 type DashboardTab = 'users' | 'leaderboard' | 'stats';
@@ -13,26 +14,35 @@ export default function UserDashboard() {
   const [allPlayers, setAllPlayers] = useState<LocalPlayerData[]>([]);
   const [leaderboardData, setLeaderboardData] = useState<LocalLeaderboardEntry[]>([]);
   const [statsData, setStatsData] = useState<any>(null);
+  const [neonLeaderboard, setNeonLeaderboard] = useState<LeaderboardRow[]>([]);
+  const [neonTotal, setNeonTotal] = useState(0);
+  const [neonLoading, setNeonLoading] = useState(false);
 
-  // Load data from storage
   const loadData = () => {
     const players = getAllPlayers();
     const leaderboard = getLeaderboard();
     const stats = getLeaderboardStats();
-    
     setAllPlayers(players);
     setLeaderboardData(leaderboard);
     setStatsData(stats);
-    
-    console.log('📊 Dashboard loaded:', {
-      playersCount: players.length,
-      leaderboardCount: leaderboard.length,
-      stats: stats,
-    });
+  };
+
+  const loadNeonLeaderboard = async () => {
+    setNeonLoading(true);
+    try {
+      const data = await fetchLeaderboard(100);
+      setNeonLeaderboard(data.entries);
+      setNeonTotal(data.total);
+    } catch {
+      // silently fall back to localStorage leaderboard
+    } finally {
+      setNeonLoading(false);
+    }
   };
 
   useEffect(() => {
     loadData();
+    loadNeonLeaderboard();
   }, []);
 
   // Auto-refresh setup
@@ -105,9 +115,9 @@ export default function UserDashboard() {
         </button>
         <button
           className={`tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
-          onClick={() => setActiveTab('leaderboard')}
+          onClick={() => { setActiveTab('leaderboard'); loadNeonLeaderboard(); }}
         >
-          🏆 Leaderboard ({leaderboardData.length})
+          🏆 Leaderboard ({neonTotal || leaderboardData.length})
         </button>
         <button
           className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
@@ -196,56 +206,59 @@ export default function UserDashboard() {
         </div>
       )}
 
-      {/* Leaderboard Tab */}
+      {/* Leaderboard Tab — pulls from Neon DB */}
       {activeTab === 'leaderboard' && (
         <div className="tab-content">
           <div className="content-header">
-            <h2>🏆 Hall of Fame</h2>
-            <button onClick={loadData} className="refresh-btn">
-              🔄 Refresh
+            <h2>🏆 Hall of Fame {neonTotal > 0 && <span style={{ fontSize: '0.7em', color: '#999' }}>({neonTotal} players)</span>}</h2>
+            <button onClick={loadNeonLeaderboard} disabled={neonLoading} className="refresh-btn">
+              {neonLoading ? '⏳' : '🔄'} Refresh
             </button>
           </div>
 
           <div className="leaderboard-container">
-            {leaderboardData.length === 0 ? (
-              <div className="empty-state">
-                <p>🏅 No scores yet. Complete a game to join the leaderboard!</p>
-              </div>
-            ) : (
+            {neonLoading && neonLeaderboard.length === 0 ? (
+              <div className="empty-state"><p>⏳ Loading live leaderboard...</p></div>
+            ) : neonLeaderboard.length > 0 ? (
               <div className="leaderboard-list">
-                {leaderboardData.map((entry) => {
+                {neonLeaderboard.map((entry) => {
                   const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
-                  
                   return (
-                    <div key={`${entry.telegramId}-${entry.achievedAt}`} className="leaderboard-entry">
+                    <div key={entry.telegram_id} className="leaderboard-entry">
                       <div className="rank-medal">{medal}</div>
                       <div className="entry-info">
                         <div className="player-info">
-                          <h3>{entry.playerName}</h3>
-                          <p className="difficulty-badge">{entry.difficulty}</p>
+                          <h3>{entry.display_name}</h3>
+                          {entry.first_name && entry.username && (
+                            <p className="difficulty-badge">{entry.first_name}</p>
+                          )}
                         </div>
                       </div>
                       <div className="entry-stats">
                         <div className="stat">
-                          <span className="label">Score</span>
-                          <span className="value">{entry.score.toLocaleString()}</span>
+                          <span className="label">Best Score</span>
+                          <span className="value">{entry.best_score.toLocaleString()}</span>
                         </div>
                         <div className="stat">
-                          <span className="label">Moves</span>
-                          <span className="value">{entry.moves}</span>
+                          <span className="label">Games</span>
+                          <span className="value">{entry.total_games}</span>
                         </div>
                         <div className="stat">
-                          <span className="label">Time</span>
-                          <span className="value">{entry.time}s</span>
+                          <span className="label">Wins</span>
+                          <span className="value">{entry.total_wins}</span>
                         </div>
                         <div className="stat">
-                          <span className="label">Achieved</span>
-                          <span className="value">{formatTime(entry.achievedAt)}</span>
+                          <span className="label">Last Active</span>
+                          <span className="value">{formatTime(new Date(entry.last_active).getTime())}</span>
                         </div>
                       </div>
                     </div>
                   );
                 })}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>🏅 No scores yet. Complete a game to join the leaderboard!</p>
               </div>
             )}
           </div>
