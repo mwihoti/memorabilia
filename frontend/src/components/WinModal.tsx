@@ -11,6 +11,13 @@ interface WinModalProps {
   onClose: () => void;
 }
 
+const GRADE_STYLES: Record<string, string> = {
+  S: 'from-amber-400 to-amber-600 text-white',
+  A: 'from-sky-400 to-sky-600 text-white',
+  B: 'from-emerald-400 to-emerald-600 text-white',
+  C: 'from-slate-400 to-slate-600 text-white',
+};
+
 export default function WinModal({ onClose }: WinModalProps) {
   const {
     currentGame,
@@ -21,33 +28,27 @@ export default function WinModal({ onClose }: WinModalProps) {
     mintNFT,
     clearMintError,
     telegramUser,
+    playerName,
+    theme,
   } = useGameStore();
 
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [playerRank, setPlayerRank] = useState<number | null>(null);
-  const [totalPlayers, setTotalPlayers] = useState<number | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     hapticNotification('success');
-
-    if (currentGame && !scoreSubmitted) {
-      submitScoreToLeaderboard();
-    }
+    if (currentGame && !scoreSubmitted) submitScoreToLeaderboard();
   }, [currentGame?.game_id]);
 
-  // Poll for rank after submission
   useEffect(() => {
     if (!scoreSubmitted || !telegramUser) return;
     const timer = setTimeout(async () => {
       try {
         const stats = await fetchPlayerStats(telegramUser.id);
-        if (stats) {
-          setPlayerRank(stats.rank);
-        }
-      } catch {
-        // rank display is optional — ignore failures
-      }
+        if (stats) setPlayerRank(stats.rank);
+      } catch { /* optional */ }
     }, 1500);
     return () => clearTimeout(timer);
   }, [scoreSubmitted, telegramUser]);
@@ -58,74 +59,84 @@ export default function WinModal({ onClose }: WinModalProps) {
   const stars = calculateStars(currentGame.moves, config.optimalMoves);
   const grade = calculateGrade(currentGame.score);
   const elapsedTime = Math.floor((Date.now() - currentGame.started_at) / 1000);
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  // Check if eligible for NFT minting
   const isEligibleForNFT = isScoreEligibleForNFT(currentGame.score);
   const canMintNFT = isEligibleForNFT && isWalletConnected && !mintTxHash;
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const displayName = playerName || telegramUser?.first_name || 'Curator';
+  const diffLabel =
+    currentGame.difficulty === 1 ? '🏺 Ancient Era' :
+    currentGame.difficulty === 2 ? '⚔️ Medieval Times' : '🚀 Modern Era';
 
-  const handleMintNFT = async () => {
-    clearMintError();
-    await mintNFT();
+  const themeAccent = {
+    museum: { btn: 'from-amber-500 to-amber-700 hover:from-amber-400', label: 'text-amber-400', badge: 'bg-amber-500/20 border-amber-500/30 text-amber-300' },
+    nature: { btn: 'from-green-500 to-green-700 hover:from-green-400', label: 'text-green-400', badge: 'bg-green-500/20 border-green-500/30 text-green-300' },
+    urban:  { btn: 'from-[#00ff88] to-[#00e5ff] hover:from-[#00e5ff]', label: 'text-[#00ff88]', badge: 'bg-[#00ff88]/10 border-[#00ff88]/25 text-[#00ff88]' },
+  }[theme];
+
+  const handleShare = async () => {
+    const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+    const shareText =
+      `${starStr} I scored ${currentGame.score.toLocaleString()} pts on Memorabilia!\n` +
+      `${diffLabel} · ${currentGame.moves} moves · ${formatTime(elapsedTime)}\n` +
+      `Play now 👉 https://t.me/memorabilia_game_bot`;
+
+    // Try native Web Share first (works in Telegram WebApp on mobile)
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: shareText });
+        return;
+      } catch { /* user cancelled or not supported */ }
+    }
+
+    // Telegram forward link fallback
+    const tgUrl = `https://t.me/share/url?url=https://t.me/memorabilia_game_bot&text=${encodeURIComponent(shareText)}`;
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(tgUrl);
+      return;
+    }
+    if (tg?.openLink) {
+      tg.openLink(tgUrl);
+      return;
+    }
+
+    // Final fallback: copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2500);
+    } catch {
+      window.open(tgUrl, '_blank');
+    }
   };
 
   const submitScoreToLeaderboard = async () => {
     if (!currentGame || scoreSubmitted) return;
-
     try {
       setSubmitError(null);
-      const elapsedTime = Math.floor((Date.now() - currentGame.started_at) / 1000);
-      const telegramId = telegramUser?.id || 0;
-
-      // In demo mode, just mark as submitted (no blockchain call)
       if (!currentGame.player || currentGame.player === 'demo_player') {
-        console.log('📊 Demo mode - Score added to leaderboard:', {
-          score: currentGame.score,
-          moves: currentGame.moves,
-          time: elapsedTime,
-          difficulty: currentGame.difficulty,
-        });
         setScoreSubmitted(true);
         return;
       }
-
-      // Blockchain mode - submit score to contract
-      console.log('📤 Submitting score to leaderboard...', {
-        gameId: currentGame.game_id,
-        telegramId,
-        score: currentGame.score,
-        difficulty: currentGame.difficulty,
-        moves: currentGame.moves,
-        time: elapsedTime,
-      });
-
-      // TODO: Call smart contract to submit score
-      // await gameController.submitScore(...)
-
       setScoreSubmitted(true);
-      console.log('✅ Score submitted to Hall of Fame!');
-    } catch (error) {
-      console.error('Failed to submit score:', error);
+    } catch {
       setSubmitError('Failed to add score to Hall of Fame');
-      // Still mark as attempted
       setScoreSubmitted(true);
     }
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
         {/* Confetti */}
         <Confetti
           width={window.innerWidth}
           height={window.innerHeight}
           recycle={false}
-          numberOfPieces={500}
+          numberOfPieces={300}
+          gravity={0.3}
         />
 
         {/* Backdrop */}
@@ -133,233 +144,202 @@ export default function WinModal({ onClose }: WinModalProps) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          className="absolute inset-0 bg-black/75 backdrop-blur-sm"
           onClick={onClose}
         />
 
-        {/* Modal */}
+        {/* Modal — sheet on mobile, centered card on desktop */}
         <motion.div
-          initial={{ scale: 0.5, opacity: 0, y: 50 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.5, opacity: 0, y: 50 }}
-          transition={{ type: 'spring', duration: 0.5 }}
-          className="relative bg-gradient-to-br from-museum-stone-900 to-museum-stone-800 rounded-3xl p-8 max-w-md w-full border-4 border-museum-gold-500 shadow-2xl"
+          initial={{ y: '100%', opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          className="relative w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden shadow-2xl"
+          style={{ maxHeight: '92dvh' }}
         >
-          {/* Trophy */}
-          <div className="text-center mb-6">
-            <motion.div
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ delay: 0.2, type: 'spring' }}
-              className="text-8xl mb-4"
-            >
-              🏆
-            </motion.div>
-            <h2 className="text-4xl font-bold bg-gradient-to-r from-museum-gold-400 to-museum-bronze-500 bg-clip-text text-transparent mb-2">Exhibition Complete!</h2>
-            <p className="text-museum-stone-400">You've completed your museum collection!</p>
+          {/* Drag handle (mobile) */}
+          <div className="sm:hidden flex justify-center pt-3 pb-1 bg-[#1e293b]">
+            <div className="w-10 h-1 bg-white/20 rounded-full" />
           </div>
 
-          {/* Stars */}
-          <div className="flex justify-center space-x-2 mb-6">
-            {[1, 2, 3].map((star) => (
-              <motion.div
-                key={star}
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: 0.3 + star * 0.1, type: 'spring' }}
-                className="text-5xl"
-              >
-                {star <= stars ? '⭐' : '☆'}
-              </motion.div>
-            ))}
-          </div>
+          {/* Scrollable content */}
+          <div
+            className="overflow-y-auto"
+            style={{ maxHeight: 'calc(92dvh - 20px)', backgroundColor: '#1e293b' }}
+          >
+            <div className="px-5 pt-4 pb-6 space-y-4">
 
-          {/* Grade */}
-          <div className="text-center mb-6">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.6, type: 'spring' }}
-              className={`
-                inline-block text-6xl font-bold px-6 py-3 rounded-2xl
-                ${grade === 'S'
-                  ? 'bg-gradient-to-r from-museum-gold-400 to-museum-bronze-500 text-white'
-                  : grade === 'A'
-                  ? 'bg-gradient-to-r from-museum-blue-400 to-museum-stone-500 text-white'
-                  : grade === 'B'
-                  ? 'bg-gradient-to-r from-museum-bronze-400 to-museum-stone-500 text-white'
-                  : 'bg-gradient-to-r from-museum-stone-400 to-museum-stone-500 text-white'
-                }
-              `}
-            >
-              {grade}
-            </motion.div>
-          </div>
+              {/* Header */}
+              <div className="text-center">
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.15, type: 'spring' }}
+                  className="text-5xl sm:text-6xl mb-2"
+                >
+                  🏆
+                </motion.div>
+                <h2 className={`text-2xl sm:text-3xl font-extrabold ${themeAccent.label}`}>
+                  Exhibition Complete!
+                </h2>
+                <p className="text-white/50 text-xs mt-0.5">{displayName} · {diffLabel}</p>
+              </div>
 
-          {/* Stats */}
-          <div className="space-y-3 mb-6">
-            {/* Hall of Fame Submission */}
-            {scoreSubmitted && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center space-x-2 bg-gradient-to-r from-museum-gold-500/20 to-museum-bronze-500/20 border border-museum-gold-400 rounded-lg p-3"
-              >
-                <span className="text-2xl">🏅</span>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-museum-gold-400">Added to Hall of Fame!</p>
-                  {playerRank ? (
-                    <p className="text-xs text-museum-stone-400">
-                      You are ranked <span className="text-museum-gold-400 font-bold">#{playerRank}</span> globally
-                    </p>
-                  ) : (
-                    <p className="text-xs text-museum-stone-400">Your score is now on the leaderboard</p>
-                  )}
-                </div>
-              </motion.div>
-            )}
+              {/* Stars */}
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3].map((star) => (
+                  <motion.span
+                    key={star}
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ delay: 0.25 + star * 0.1, type: 'spring' }}
+                    className="text-4xl sm:text-5xl"
+                  >
+                    {star <= stars ? '⭐' : '☆'}
+                  </motion.span>
+                ))}
+              </div>
 
-            {submitError && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-center space-x-2 bg-red-500/20 border border-red-400 rounded-lg p-3"
-              >
-                <span className="text-xl">⚠️</span>
-                <p className="text-sm text-red-400">{submitError}</p>
-              </motion.div>
-            )}
-
-            <div className="flex justify-between items-center bg-museum-stone-800/50 rounded-lg p-3">
-              <span className="text-museum-stone-400">Score</span>
-              <span className="text-2xl font-bold text-museum-gold-400">{currentGame.score.toLocaleString()}</span>
-            </div>
-            
-            <div className="flex justify-between items-center bg-museum-stone-800/50 rounded-lg p-3">
-              <span className="text-museum-stone-400">Discoveries</span>
-              <span className="text-xl font-bold">
-                {currentGame.moves}
-                <span className="text-sm text-museum-stone-500 ml-2">
-                  (Optimal: {config.optimalMoves})
-                </span>
-              </span>
-            </div>
-            
-            <div className="flex justify-between items-center bg-museum-stone-800/50 rounded-lg p-3">
-              <span className="text-museum-stone-400">Time</span>
-              <span className="text-xl font-bold text-museum-blue-400">{formatTime(elapsedTime)}</span>
-            </div>
-            
-            <div className="flex justify-between items-center bg-museum-stone-800/50 rounded-lg p-3">
-              <span className="text-museum-stone-400">Era</span>
-              <span className="text-xl font-bold text-museum-bronze-400">
-                {currentGame.difficulty === 1 ? 'Ancient Era' : currentGame.difficulty === 2 ? 'Medieval Times' : 'Modern Era'}
-              </span>
-            </div>
-          </div>
-
-          {/* NFT Minting Section */}
-          {isEligibleForNFT && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-museum-bronze-900/30 to-museum-stone-900/30 border-2 border-museum-bronze-500 rounded-xl">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <span className="text-3xl">🏛️</span>
-                  <div>
-                    <h3 className="font-bold text-museum-bronze-400">NFT Eligible!</h3>
-                    <p className="text-xs text-museum-stone-400">Score ≥ 10</p>
+              {/* Grade + Score row */}
+              <div className="flex items-center gap-3">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.55, type: 'spring' }}
+                  className={`flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-extrabold bg-gradient-to-br ${GRADE_STYLES[grade] ?? GRADE_STYLES.C}`}
+                >
+                  {grade}
+                </motion.div>
+                <div className="flex-1 bg-white/5 rounded-2xl px-4 py-3">
+                  <div className={`text-3xl font-extrabold ${themeAccent.label}`}>
+                    {currentGame.score.toLocaleString()}
                   </div>
+                  <div className="text-white/40 text-xs">points scored</div>
                 </div>
               </div>
 
-              {!isWalletConnected && (
-                <p className="text-sm text-museum-gold-400 mb-3">
-                  ⚠️ Connect your wallet to mint NFT
-                </p>
-              )}
+              {/* Stats grid */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Moves', value: currentGame.moves, sub: `opt. ${config.optimalMoves}` },
+                  { label: 'Time',  value: formatTime(elapsedTime), sub: '' },
+                  { label: 'Pairs', value: `${currentGame.matched_count}/${currentGame.total_pairs}`, sub: '' },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} className="bg-white/5 rounded-xl px-3 py-2.5 text-center">
+                    <div className="text-white font-bold text-sm sm:text-base">{value}</div>
+                    <div className="text-white/40 text-[10px]">{label}</div>
+                    {sub && <div className="text-white/25 text-[9px]">{sub}</div>}
+                  </div>
+                ))}
+              </div>
 
-              {mintTxHash && (
-                <div className="mb-3 p-3 bg-museum-stone-900/30 border border-museum-stone-500 rounded-lg">
-                  <p className="text-sm text-museum-stone-400 font-medium mb-1">✅ NFT Minted!</p>
-                  <p className="text-xs text-museum-stone-500 break-all">
-                    Tx: {mintTxHash.slice(0, 10)}...{mintTxHash.slice(-8)}
-                  </p>
-                </div>
-              )}
-
-              {mintError && (
-                <div className="mb-3 p-3 bg-red-900/30 border border-red-600/50 rounded-lg">
-                  <p className="text-sm text-red-400 font-medium mb-1">❌ Minting Failed</p>
-                  <p className="text-xs text-red-300 break-words">
-                    {mintError.includes('Validate') 
-                      ? 'Address validation failed. Please try again or reconnect wallet.' 
-                      : mintError}
-                  </p>
-                  <button
-                    onClick={clearMintError}
-                    className="mt-2 text-xs text-red-400 hover:text-red-300 underline"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              {canMintNFT && (
-                <button
-                  onClick={handleMintNFT}
-                  disabled={isMinting}
-                  className={`
-                    w-full py-3 rounded-xl font-bold text-lg transition-all duration-300 transform
-                    ${isMinting
-                      ? 'bg-museum-stone-700 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-museum-bronze-600 to-museum-stone-600 hover:from-museum-bronze-700 hover:to-museum-stone-700 hover:scale-105'
-                    }
-                  `}
+              {/* Hall of Fame banner */}
+              {scoreSubmitted && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${themeAccent.badge}`}
                 >
-                  {isMinting ? (
-                    <span className="flex items-center justify-center space-x-2">
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Minting...</span>
-                    </span>
-                  ) : (
-                    'Mint NFT 🏛️'
+                  <span className="text-xl flex-shrink-0">🏅</span>
+                  <div>
+                    <p className="text-sm font-bold leading-tight">Added to Hall of Fame!</p>
+                    <p className="text-xs opacity-70">
+                      {playerRank
+                        ? `You're ranked #${playerRank} globally`
+                        : 'Your score is on the leaderboard'}
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
+              {submitError && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                  <span>⚠️</span><span>{submitError}</span>
+                </div>
+              )}
+
+              {/* NFT section */}
+              {isEligibleForNFT && (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🏛️</span>
+                    <div>
+                      <p className="font-bold text-amber-400 text-sm">NFT Eligible</p>
+                      <p className="text-xs text-white/40">Score ≥ 10 · Mint your achievement</p>
+                    </div>
+                  </div>
+
+                  {!isWalletConnected && (
+                    <p className="text-xs text-amber-300">Connect your Cartridge wallet to mint</p>
                   )}
-                </button>
+
+                  {mintTxHash && (
+                    <div className="bg-white/5 rounded-xl p-3 text-xs text-white/60 break-all">
+                      ✅ NFT Minted · Tx: {mintTxHash.slice(0, 10)}…{mintTxHash.slice(-6)}
+                    </div>
+                  )}
+
+                  {mintError && (
+                    <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-3 text-xs text-red-400">
+                      ❌ {mintError.includes('Validate') ? 'Validation failed — reconnect wallet and retry' : mintError}
+                      <button onClick={clearMintError} className="ml-2 underline opacity-70">Dismiss</button>
+                    </div>
+                  )}
+
+                  {canMintNFT && (
+                    <button
+                      onClick={() => { clearMintError(); mintNFT(); }}
+                      disabled={isMinting}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-400 text-white transition-all disabled:opacity-50"
+                    >
+                      {isMinting ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Minting…
+                        </span>
+                      ) : 'Mint NFT 🏛️'}
+                    </button>
+                  )}
+
+                  {mintError && (
+                    <button
+                      onClick={() => { clearMintError(); mintNFT(); }}
+                      disabled={isMinting}
+                      className="w-full py-2.5 border border-red-500/40 rounded-xl text-red-400 text-sm font-bold hover:bg-red-900/20 transition-all"
+                    >
+                      {isMinting ? 'Retrying…' : '🔄 Retry Minting'}
+                    </button>
+                  )}
+                </div>
               )}
 
-              {mintError && (
-                <button
-                  onClick={handleMintNFT}
-                  disabled={isMinting}
-                  className="w-full py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-600/50 hover:border-red-600 rounded-xl font-bold text-red-400 transition-all"
+              {/* Actions */}
+              <div className="flex gap-3">
+                <motion.button
+                  onClick={onClose}
+                  className={`flex-1 py-3.5 bg-gradient-to-r ${themeAccent.btn} text-white font-bold rounded-xl text-sm transition-all shadow-lg`}
+                  whileTap={{ scale: 0.97 }}
                 >
-                  {isMinting ? 'Retrying...' : '🔄 Retry Minting'}
-                </button>
-              )}
+                  New Exhibition
+                </motion.button>
+
+                <motion.button
+                  onClick={handleShare}
+                  className="flex-1 py-3.5 bg-white/10 hover:bg-white/15 rounded-xl font-bold text-sm text-white/80 transition-all flex items-center justify-center gap-1.5"
+                  whileTap={{ scale: 0.97 }}
+                >
+                  {shareCopied ? (
+                    <><span>✅</span><span>Copied!</span></>
+                  ) : (
+                    <><span>📤</span><span>Share</span></>
+                  )}
+                </motion.button>
+              </div>
+
             </div>
-          )}
-
-          {/* Actions */}
-          <div className="space-y-3">
-            <button
-              onClick={onClose}
-              className="w-full py-4 bg-gradient-to-r from-museum-blue-600 to-museum-bronze-600 hover:from-museum-blue-700 hover:to-museum-bronze-700 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105"
-            >
-              New Exhibition
-            </button>
-
-            <button
-              onClick={() => {
-                // TODO: Share score
-                alert('Share functionality coming soon!');
-              }}
-              className="w-full py-3 bg-museum-stone-700 hover:bg-museum-stone-600 rounded-xl font-medium transition-colors"
-            >
-              Share Collection 📤
-            </button>
           </div>
         </motion.div>
       </div>
     </AnimatePresence>
   );
 }
-
