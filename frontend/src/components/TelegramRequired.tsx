@@ -1,161 +1,151 @@
-import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 
 export default function TelegramRequired() {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    // Detect if user is on mobile
-    const checkMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
-    setIsMobile(checkMobile);
-  }, []);
-
   const handleOpenInTelegram = () => {
-    // Redirect to Telegram bot
     window.location.href = 'https://t.me/memorabilia_game_bot/memorabilia_game';
   };
 
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText('https://t.me/memorabilia_game_bot/memorabilia_game').then(() => {
+      alert('Link copied! Open it in Telegram.');
+    });
+  };
+
+  const howToPlay = [
+    { icon: '👆', text: 'Tap any card to flip it and reveal a hidden artifact' },
+    { icon: '🧠', text: 'Remember its position — then find its matching pair' },
+    { icon: '✅', text: 'Match all pairs before the clock runs out to win' },
+    { icon: '⚡', text: 'Fewer moves = higher score. Can you get 3 stars?' },
+  ];
+
+  const features = [
+    { icon: '🏛️', label: 'Museum Theme' },
+    { icon: '🌿', label: 'Nature Theme' },
+    { icon: '🎨', label: 'Urban/Graffiti' },
+    { icon: '🏆', label: 'Leaderboard' },
+    { icon: '⛓️', label: 'On-chain Starknet' },
+    { icon: '📊', label: 'Score History' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 shadow-2xl border border-white/20">
-        {/* Logo */}
-        <div className="text-center mb-6">
-          <div className="text-8xl mb-4">🎮</div>
-          <h1 className="text-4xl font-bold text-white mb-2">Memorabilia</h1>
-          <p className="text-purple-200 text-lg">On-chain Memory Game</p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-950 flex items-center justify-center p-4">
+      <div className="max-w-sm w-full">
 
-        {/* Message */}
-        <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-2xl p-6 mb-6">
-          <div className="flex items-start gap-3">
-            <div className="text-3xl">📱</div>
-            <div>
-              <h2 className="text-white font-semibold text-lg mb-2">
-                Telegram Required
-              </h2>
-              <p className="text-purple-100 text-sm leading-relaxed">
-                This game is a Telegram Mini App and must be opened inside the Telegram app.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Instructions */}
-        <div className="space-y-4 mb-6">
-          <h3 className="text-white font-semibold text-lg">How to play:</h3>
-          
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 bg-white/5 rounded-xl p-4">
-              <div className="text-2xl">1️⃣</div>
-              <div className="flex-1">
-                <p className="text-purple-100 text-sm">
-                  {isMobile ? (
-                    <>Open the <span className="font-semibold text-white">Telegram app</span> on your device</>
-                  ) : (
-                    <>Install <span className="font-semibold text-white">Telegram</span> on your mobile device</>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 bg-white/5 rounded-xl p-4">
-              <div className="text-2xl">2️⃣</div>
-              <div className="flex-1">
-                <p className="text-purple-100 text-sm">
-                  Search for <span className="font-mono bg-purple-500/30 px-2 py-1 rounded text-white">@memorabilia_game_bot</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 bg-white/5 rounded-xl p-4">
-              <div className="text-2xl">3️⃣</div>
-              <div className="flex-1">
-                <p className="text-purple-100 text-sm">
-                  Click the <span className="font-semibold text-white">menu button</span> and select <span className="font-semibold text-white">"memorabilia_game"</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 bg-white/5 rounded-xl p-4">
-              <div className="text-2xl">4️⃣</div>
-              <div className="flex-1">
-                <p className="text-purple-100 text-sm">
-                  Start playing and <span className="font-semibold text-white">match pairs</span> to win!
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <button
-          onClick={handleOpenInTelegram}
-          className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg"
+        {/* Hero */}
+        <motion.div
+          className="text-center mb-6"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
         >
-          {isMobile ? (
-            <>
-              <span className="text-xl mr-2">📱</span>
-              Open in Telegram
-            </>
-          ) : (
-            <>
-              <span className="text-xl mr-2">💻</span>
-              View on Mobile
-            </>
-          )}
-        </button>
-
-        {/* Alternative: Copy Link */}
-        <div className="mt-4 text-center">
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText('https://t.me/memorabilia_game_bot/memorabilia_game');
-              alert('Link copied! Open it in Telegram.');
-            }}
-            className="text-purple-300 hover:text-white text-sm underline transition-colors"
+          <motion.div
+            className="text-7xl mb-3 inline-block"
+            animate={{ y: [0, -8, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
           >
-            📋 Copy Telegram Link
-          </button>
-        </div>
+            🏛️
+          </motion.div>
+          <h1 className="text-4xl font-extrabold text-white tracking-tight">Memorabilia</h1>
+          <p className="text-indigo-300 mt-1 text-sm font-medium tracking-wide uppercase">
+            On-chain Memory Card Game · Starknet
+          </p>
+        </motion.div>
 
-        {/* Features */}
-        <div className="mt-8 pt-6 border-t border-white/10">
-          <h3 className="text-white font-semibold text-sm mb-3">Game Features:</h3>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center gap-2 text-purple-200">
-              <span>⚡</span>
-              <span>3 Difficulty Levels</span>
-            </div>
-            <div className="flex items-center gap-2 text-purple-200">
-              <span>🎨</span>
-              <span>Beautiful Animations</span>
-            </div>
-            <div className="flex items-center gap-2 text-purple-200">
-              <span>🔊</span>
-              <span>Sound Effects</span>
-            </div>
-            <div className="flex items-center gap-2 text-purple-200">
-              <span>🏆</span>
-              <span>Global Leaderboard</span>
-            </div>
-            <div className="flex items-center gap-2 text-purple-200">
-              <span>⛓️</span>
-              <span>On-chain Gameplay</span>
-            </div>
-            <div className="flex items-center gap-2 text-purple-200">
-              <span>🎯</span>
-              <span>Score Tracking</span>
+        {/* Main card */}
+        <motion.div
+          className="bg-white/8 backdrop-blur-xl rounded-3xl border border-white/15 shadow-2xl overflow-hidden"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.5 }}
+        >
+          {/* Telegram notice */}
+          <div className="bg-amber-500/15 border-b border-amber-500/25 px-5 py-4 flex items-center gap-3">
+            <span className="text-2xl">📱</span>
+            <div>
+              <p className="text-amber-200 font-semibold text-sm">Open inside Telegram</p>
+              <p className="text-amber-100/60 text-xs">This Mini App requires Telegram authentication</p>
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="mt-6 text-center text-purple-300 text-xs">
-          Built with Dojo on Starknet
-        </div>
+          <div className="p-5 space-y-5">
+            {/* How to play */}
+            <div>
+              <h2 className="text-white font-bold text-base mb-3 flex items-center gap-2">
+                <span>🎮</span> How to Play
+              </h2>
+              <ul className="space-y-2">
+                {howToPlay.map((step, i) => (
+                  <motion.li
+                    key={i}
+                    className="flex items-start gap-3 bg-white/5 rounded-xl px-4 py-2.5"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + i * 0.07 }}
+                  >
+                    <span className="text-base flex-shrink-0 mt-px">{step.icon}</span>
+                    <span className="text-white/80 text-xs leading-relaxed">{step.text}</span>
+                  </motion.li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Difficulty info */}
+            <div className="bg-white/5 rounded-xl px-4 py-3">
+              <h3 className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-2">Difficulty Levels</h3>
+              <div className="space-y-1.5 text-xs text-white/70">
+                <div className="flex justify-between"><span>🏺 Ancient Era</span><span className="text-white/50">6 pairs · 12 cards</span></div>
+                <div className="flex justify-between"><span>⚔️ Medieval Times</span><span className="text-white/50">10 pairs · 20 cards</span></div>
+                <div className="flex justify-between"><span>🚀 Modern Era</span><span className="text-white/50">15 pairs · 30 cards</span></div>
+              </div>
+            </div>
+
+            {/* Features grid */}
+            <div>
+              <h3 className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-2">Features</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {features.map((f, i) => (
+                  <motion.div
+                    key={i}
+                    className="bg-white/5 rounded-xl py-2.5 flex flex-col items-center gap-1"
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.5 + i * 0.05 }}
+                  >
+                    <span className="text-lg">{f.icon}</span>
+                    <span className="text-white/60 text-[10px] text-center leading-tight">{f.label}</span>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="px-5 pb-5 space-y-3">
+            <motion.button
+              onClick={handleOpenInTelegram}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg text-sm"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+            >
+              📱 Open in Telegram
+            </motion.button>
+
+            <button
+              onClick={handleCopyLink}
+              className="w-full py-2.5 text-indigo-300 hover:text-white text-xs font-medium transition-colors"
+            >
+              📋 Copy Telegram link
+            </button>
+          </div>
+        </motion.div>
+
+        <p className="text-center text-white/20 text-xs mt-5">
+          Memorabilia · Powered by Dojo on Starknet
+        </p>
       </div>
     </div>
   );
 }
-

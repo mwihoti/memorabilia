@@ -9,10 +9,13 @@ import { mintScoreNFT } from '../cartridge/nftMinter';
 import { addGameScore } from './playerStorage';
 import { submitScore } from '../lib/api';
 
+export type Theme = 'museum' | 'nature' | 'urban';
+
 interface GameStore {
   // User & Account
   telegramUser: TelegramUser | null;
   playerName: string | null;
+  theme: Theme;
   account: Account | null;
   isAccountLoading: boolean;
 
@@ -45,6 +48,7 @@ interface GameStore {
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
   setPlayerName: (name: string) => void;
+  setTheme: (theme: Theme) => void;
   setAccount: (account: Account | null) => void;
   setGameController: (controller: GameController | null) => void;
 
@@ -76,6 +80,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Initial State
   telegramUser: null,
   playerName: localStorage.getItem('memorabilia_player_name') || null,
+  theme: (localStorage.getItem('memorabilia_theme') as Theme) || 'museum',
   account: null,
   isAccountLoading: false,
 
@@ -105,6 +110,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
   setPlayerName: (name) => set({ playerName: name }),
+  setTheme: (theme) => { localStorage.setItem('memorabilia_theme', theme); set({ theme }); },
   setAccount: (account) => set({ account }),
   setGameController: (controller) => set({ gameController: controller }),
 

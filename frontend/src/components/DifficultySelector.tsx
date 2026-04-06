@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, Theme } from '../store/gameStore';
 import { Difficulty, GAME_CONFIGS } from '../types';
 import { hapticImpact } from '../telegram/telegram';
 
@@ -8,9 +8,15 @@ interface DifficultySelectorProps {
   onStart: () => void;
 }
 
+const THEMES: { id: Theme; label: string; icon: string; desc: string }[] = [
+  { id: 'museum', label: 'Museum',  icon: '🏛️', desc: 'Classic gold & amber' },
+  { id: 'nature', label: 'Nature',  icon: '🌿', desc: 'Forest green & earth' },
+  { id: 'urban',  label: 'Urban',   icon: '🎨', desc: 'Neon graffiti streets' },
+];
+
 export default function DifficultySelector({ onStart }: DifficultySelectorProps) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
-  const { startNewGame, isGameLoading, playerName, telegramUser } = useGameStore();
+  const { startNewGame, isGameLoading, playerName, telegramUser, theme, setTheme } = useGameStore();
   const displayName = playerName || telegramUser?.first_name || 'Curator';
 
   const handleSelectDifficulty = (difficulty: Difficulty) => {
@@ -20,7 +26,6 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
 
   const handleStart = async () => {
     if (!selectedDifficulty || isGameLoading) return;
-    
     hapticImpact('medium');
     await startNewGame(selectedDifficulty);
     onStart();
@@ -31,147 +36,181 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
       level: Difficulty.Easy,
       name: 'Ancient Era',
       emoji: '🏺',
-      color: 'from-museum-bronze-500 to-museum-bronze-700',
-      borderColor: 'border-museum-bronze-500',
-      description: '6 artifacts • 12 cards',
+      description: '6 artifacts · 12 cards',
       time: '~2 min',
     },
     {
       level: Difficulty.Medium,
       name: 'Medieval Times',
       emoji: '⚔️',
-      color: 'from-museum-stone-600 to-museum-stone-800',
-      borderColor: 'border-museum-stone-600',
-      description: '10 artifacts • 20 cards',
+      description: '10 artifacts · 20 cards',
       time: '~4 min',
     },
     {
       level: Difficulty.Hard,
       name: 'Modern Era',
       emoji: '🚀',
-      color: 'from-museum-blue-600 to-museum-blue-800',
-      borderColor: 'border-museum-blue-600',
-      description: '15 artifacts • 30 cards',
+      description: '15 artifacts · 30 cards',
       time: '~7 min',
     },
   ];
 
+  const themeAccent = {
+    museum: { text: 'text-amber-400', border: 'border-amber-500', ring: 'ring-amber-500/40', cta: 'from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600', ctaDisabled: 'bg-slate-700 text-slate-500', selected: 'border-amber-400 bg-amber-500/10' },
+    nature: { text: 'text-green-400', border: 'border-green-500', ring: 'ring-green-500/40', cta: 'from-green-500 to-green-700 hover:from-green-400 hover:to-green-600', ctaDisabled: 'bg-[#14532d] text-green-800', selected: 'border-green-400 bg-green-500/10' },
+    urban:  { text: 'text-[#00ff88]', border: 'border-[#00ff88]', ring: 'ring-[#00ff88]/30', cta: 'from-[#00ff88] to-[#00e5ff] hover:from-[#00e5ff] hover:to-[#00ff88]', ctaDisabled: 'bg-zinc-800 text-zinc-600', selected: 'border-[#00ff88] bg-[#00ff88]/5' },
+  }[theme];
+
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-2xl mx-auto">
+      {/* Welcome */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-10"
+        className="text-center mb-6"
       >
-        <p className="text-museum-gold-400 text-sm font-semibold tracking-wider uppercase mb-2">
+        <p className={`${themeAccent.text} text-xs font-semibold tracking-wider uppercase mb-1`}>
           Welcome back, {displayName}!
         </p>
-        <h2 className="text-4xl font-bold mb-3 bg-gradient-to-r from-museum-gold-500 to-museum-bronze-600 bg-clip-text text-transparent">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-2" style={{ color: 'var(--theme-text)' }}>
           Choose Your Era
         </h2>
-        <p className="text-[#FCFFF7]/70">Select a time period to discover artifacts</p>
+        <p className="text-sm" style={{ color: 'var(--theme-muted)' }}>Select a time period to discover artifacts</p>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {difficulties.map((diff) => {
+      {/* Theme selector */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.1 }}
+        className="mb-6"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: 'var(--theme-muted)' }}>
+          Visual Theme
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => { hapticImpact('light'); setTheme(t.id); }}
+              className={`
+                flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-all duration-200
+                ${theme === t.id
+                  ? `${themeAccent.selected} ring-2 ${themeAccent.ring} scale-105`
+                  : 'border-white/10 bg-white/5 hover:border-white/25'
+                }
+              `}
+            >
+              <span className="text-2xl">{t.icon}</span>
+              <span className="text-xs font-bold text-white">{t.label}</span>
+              <span className="text-[10px] text-white/50 text-center leading-tight hidden sm:block">{t.desc}</span>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Difficulty cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        {difficulties.map((diff, i) => {
           const config = GAME_CONFIGS[diff.level];
           const isSelected = selectedDifficulty === diff.level;
-          
+
           return (
-            <button
+            <motion.button
               key={diff.level}
               onClick={() => handleSelectDifficulty(diff.level)}
               className={`
-                relative p-6 rounded-2xl transition-all duration-300 transform
-                ${isSelected 
-                  ? `scale-105 border-4 ${diff.borderColor} shadow-2xl` 
-                  : 'border-2 border-museum-stone-400 hover:scale-105 hover:border-museum-bronze-400'
+                relative p-4 sm:p-5 rounded-2xl transition-all duration-200 text-left
+                border-2 backdrop-blur-sm
+                ${isSelected
+                  ? `${themeAccent.selected} ${themeAccent.border} ring-2 ${themeAccent.ring} scale-[1.03]`
+                  : 'border-white/10 bg-white/5 hover:border-white/25 hover:scale-[1.02]'
                 }
-                bg-gradient-to-br ${diff.color} bg-opacity-10 backdrop-blur-sm
               `}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 + i * 0.08 }}
             >
-              {/* Emoji */}
-              <div className="text-6xl mb-4">{diff.emoji}</div>
-              
-              {/* Name */}
-              <h3 className="text-2xl font-bold mb-2 text-[#FCFFF7]">{diff.name}</h3>
-              
-                  {/* Description */}
-              <p className="text-sm text-[#FCFFF7]/80 mb-3">{diff.description}</p>
+              <div className="text-4xl mb-3">{diff.emoji}</div>
+              <h3 className="text-base font-bold mb-1 text-white">{diff.name}</h3>
+              <p className="text-xs mb-3" style={{ color: 'var(--theme-muted)' }}>{diff.description}</p>
 
-              {/* Stats */}
-              <div className="space-y-1.5 text-sm">
+              <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-[#FCFFF7]/60">Optimal moves:</span>
-                  <span className="font-bold text-[#FCFFF7]">{config.optimalMoves}</span>
+                  <span style={{ color: 'var(--theme-muted)' }}>Optimal moves</span>
+                  <span className="font-bold text-white">{config.optimalMoves}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#FCFFF7]/60">Est. time:</span>
-                  <span className="font-bold text-museum-gold-300">{diff.time}</span>
+                  <span style={{ color: 'var(--theme-muted)' }}>Est. time</span>
+                  <span className={`font-bold ${themeAccent.text}`}>{diff.time}</span>
                 </div>
               </div>
-              
-              {/* Selected Indicator */}
+
               {isSelected && (
-                <div className="absolute top-4 right-4 w-8 h-8 bg-museum-gold-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xl">✓</span>
+                <div className={`absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-slate-900 ${theme === 'museum' ? 'bg-amber-400' : theme === 'nature' ? 'bg-green-400' : 'bg-[#00ff88]'}`}>
+                  ✓
                 </div>
               )}
-            </button>
+            </motion.button>
           );
         })}
       </div>
 
       {/* Start Button */}
-      <div className="text-center">
-        <button
+      <div className="text-center mb-8">
+        <motion.button
           onClick={handleStart}
           disabled={!selectedDifficulty || isGameLoading}
           className={`
-            px-12 py-4 rounded-xl text-xl font-bold transition-all duration-300 transform
+            px-10 py-3.5 rounded-xl text-base font-bold transition-all duration-200
             ${selectedDifficulty && !isGameLoading
-              ? 'bg-gradient-to-r from-museum-gold-500 to-museum-bronze-600 hover:from-museum-gold-600 hover:to-museum-bronze-700 hover:scale-105 shadow-lg text-white'
-              : 'bg-museum-stone-600 cursor-not-allowed opacity-50 text-museum-stone-400'
+              ? `bg-gradient-to-r ${themeAccent.cta} text-white shadow-lg hover:scale-105`
+              : `${themeAccent.ctaDisabled} cursor-not-allowed opacity-50`
             }
           `}
+          whileTap={selectedDifficulty && !isGameLoading ? { scale: 0.96 } : {}}
         >
           {isGameLoading ? (
-            <span className="flex items-center space-x-2">
+            <span className="flex items-center gap-2">
               <span className="animate-spin">⏳</span>
-              <span>Entering Gallery...</span>
+              <span>Entering Gallery…</span>
             </span>
           ) : (
-            'Enter Museum'
+            theme === 'urban' ? 'Hit the Streets' : theme === 'nature' ? 'Enter the Forest' : 'Enter Museum'
           )}
-        </button>
+        </motion.button>
       </div>
 
-      {/* How to Play */}
-      <div className="mt-12 p-6 bg-museum-stone-800/30 backdrop-blur-sm rounded-xl border border-museum-bronze-400/20">
-        <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-[#FCFFF7]">
-          <span>📖</span>
-          <span>How to Build Your Museum</span>
+      {/* How to play */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="p-4 sm:p-5 rounded-xl border"
+        style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'var(--theme-border)' }}
+      >
+        <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: 'var(--theme-text)' }}>
+          <span>📖</span> How to Play
         </h3>
-        <ul className="space-y-2 text-[#FCFFF7]">
-          <li className="flex items-start space-x-2">
-            <span className="text-museum-gold-400 font-bold">1.</span>
-            <span>Click on artifacts to reveal their historical significance</span>
+        <ul className="space-y-2 text-xs" style={{ color: 'var(--theme-muted)' }}>
+          <li className="flex items-start gap-2">
+            <span className={`font-bold ${themeAccent.text} flex-shrink-0`}>1.</span>
+            <span>Tap any card to flip it and reveal a hidden artifact</span>
           </li>
-          <li className="flex items-start space-x-2">
-            <span className="text-museum-gold-400 font-bold">2.</span>
-            <span>Find matching pairs from the same time period</span>
+          <li className="flex items-start gap-2">
+            <span className={`font-bold ${themeAccent.text} flex-shrink-0`}>2.</span>
+            <span>Remember where it is, then tap a second card to find its match</span>
           </li>
-          <li className="flex items-start space-x-2">
-            <span className="text-museum-gold-400 font-bold">3.</span>
-            <span>Collect all artifacts to complete your museum exhibition</span>
+          <li className="flex items-start gap-2">
+            <span className={`font-bold ${themeAccent.text} flex-shrink-0`}>3.</span>
+            <span>Match all pairs to complete the exhibition — fewer moves = higher score</span>
           </li>
-          <li className="flex items-start space-x-2">
-            <span className="text-museum-gold-400 font-bold">4.</span>
-            <span>Compete for the Hall of Fame with the best collections!</span>
+          <li className="flex items-start gap-2">
+            <span className={`font-bold ${themeAccent.text} flex-shrink-0`}>4.</span>
+            <span>Earn ⭐⭐⭐ stars and climb the global leaderboard!</span>
           </li>
         </ul>
-      </div>
+      </motion.div>
     </div>
   );
 }
-

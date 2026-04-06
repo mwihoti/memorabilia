@@ -2,142 +2,231 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Fonts ──────────────────────────────────────────────────────────────── */
 :root {
-  font-family: 'Georgia', 'Times New Roman', 'Palatino', serif;
+  font-family: 'Inter', 'Georgia', 'Times New Roman', serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  color-scheme: dark;
+  color: rgba(255,255,255,0.87);
+  background-color: #0f172a;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* safe area for iOS notch / home bar */
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;        /* dynamic viewport on mobile */
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* faster tap response */
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+
+/* ── Theme CSS custom properties ─────────────────────────────────────────── */
+
+/* Museum theme (default) */
+.theme-museum {
+  --theme-bg:        #0f172a;
+  --theme-surface:   #1e293b;
+  --theme-border:    rgba(217,119,6,0.3);
+  --theme-accent:    #f59e0b;
+  --theme-accent2:   #b45309;
+  --theme-text:      #f1f5f9;
+  --theme-muted:     #94a3b8;
+  --card-back-from:  #92400e;
+  --card-back-to:    #ca8a04;
+  --card-back-icon:  "🏛️";
+  --header-font:     'Inter', serif;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
+/* Nature theme */
+.theme-nature {
+  --theme-bg:        #052e16;
+  --theme-surface:   #14532d;
+  --theme-border:    rgba(34,197,94,0.3);
+  --theme-accent:    #4ade80;
+  --theme-accent2:   #16a34a;
+  --theme-text:      #f0fdf4;
+  --theme-muted:     #86efac;
+  --card-back-from:  #14532d;
+  --card-back-to:    #166534;
+  --card-back-icon:  "🌿";
+  --header-font:     'Inter', serif;
 }
 
-::-webkit-scrollbar-track {
-  background: #1a1a1a;
+/* Urban / Graffiti theme */
+.theme-urban {
+  --theme-bg:        #09090b;
+  --theme-surface:   #18181b;
+  --theme-border:    rgba(0,255,136,0.25);
+  --theme-accent:    #00ff88;
+  --theme-accent2:   #ff0080;
+  --theme-text:      #fafafa;
+  --theme-muted:     #a1a1aa;
+  --card-back-from:  #18181b;
+  --card-back-to:    #27272a;
+  --card-back-icon:  "🎨";
+  --header-font:     'Bebas Neue', sans-serif;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
-  border-radius: 4px;
+/* ── Graffiti utilities ───────────────────────────────────────────────────── */
+.font-graffiti   { font-family: 'Permanent Marker', cursive; }
+.font-street     { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
+
+/* Spray-paint glow */
+.glow-neon  { text-shadow: 0 0 8px #00ff88, 0 0 20px #00ff88; }
+.glow-pink  { text-shadow: 0 0 8px #ff0080, 0 0 20px #ff0080; }
+.glow-cyan  { text-shadow: 0 0 8px #00e5ff, 0 0 20px #00e5ff; }
+
+/* Urban neon border */
+.border-neon { border: 2px solid #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.4); }
+.border-pink { border: 2px solid #ff0080; box-shadow: 0 0 10px rgba(255,0,128,0.4); }
+
+/* Spray paint circle behind text */
+.spray::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,255,136,0.15) 0%, transparent 70%);
+  pointer-events: none;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
+/* ── Nature utilities ─────────────────────────────────────────────────────── */
+.leaf-pattern {
+  background-image:
+    radial-gradient(circle at 20% 80%, rgba(34,197,94,0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(22,163,74,0.08) 0%, transparent 50%);
 }
 
-/* Card flip animation */
-.card-flip {
-  perspective: 1000px;
+/* ── Mobile-first base ───────────────────────────────────────────────────── */
+
+/* Minimum tap target */
+button, [role="button"] {
+  min-height: 40px;
+  min-width: 40px;
 }
 
+/* Prevent text selection during gameplay */
+.no-select { user-select: none; -webkit-user-select: none; }
+
+/* Smooth momentum scroll */
+.scroll-smooth { -webkit-overflow-scrolling: touch; }
+
+/* ── Scrollbar (desktop only) ─────────────────────────────────────────────── */
+@media (pointer: fine) {
+  ::-webkit-scrollbar        { width: 6px; }
+  ::-webkit-scrollbar-track  { background: #1a1a1a; }
+  ::-webkit-scrollbar-thumb  { background: #4a4a4a; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #5a5a5a; }
+}
+
+/* ── Card flip ────────────────────────────────────────────────────────────── */
+.card-flip { perspective: 800px; }
 .card-flip-inner {
   position: relative;
   width: 100%;
   height: 100%;
-  transition: transform 0.6s;
+  transition: transform 0.13s cubic-bezier(0.4,0,0.2,1);
   transform-style: preserve-3d;
 }
-
-.card-flip.flipped .card-flip-inner {
-  transform: rotateY(180deg);
-}
-
-.card-front,
-.card-back {
+.card-flip.flipped .card-flip-inner { transform: rotateY(180deg); }
+.card-front, .card-back {
   position: absolute;
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   backface-visibility: hidden;
   border-radius: 12px;
 }
+.card-back { transform: rotateY(180deg); }
 
-.card-back {
-  transform: rotateY(180deg);
-}
-
-/* Telegram theme support */
+/* ── Telegram theme ───────────────────────────────────────────────────────── */
 .telegram-theme {
   background-color: var(--tg-theme-bg-color, #17212b);
   color: var(--tg-theme-text-color, #ffffff);
 }
 
-/* Pulse animation for active cards */
+/* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%,100% { opacity:1; }
+  50%      { opacity:0.5; }
+}
+.pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+@keyframes shimmer {
+  0%   { background-position: -1000px 0; }
+  100% { background-position:  1000px 0; }
+}
+.shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(to right, #1e293b 0%, #334155 20%, #1e293b 40%, #1e293b 100%);
+  background-size: 1000px 100%;
 }
 
-.pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+.float { animation: float 3s ease-in-out infinite; }
+
+@keyframes scanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+/* Urban scanline overlay — applied in urban theme */
+.theme-urban .scanline::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
 }
 
-/* Gradient text */
+/* ── Glass morphism ────────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* ── Gradient text utility ────────────────────────────────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f59e0b, #b45309);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-
-/* Glass morphism effect */
-.glass {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+.gradient-text-nature {
+  background: linear-gradient(135deg, #4ade80, #16a34a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
-
-/* Shimmer loading effect */
-@keyframes shimmer {
-  0% {
-    background-position: -1000px 0;
-  }
-  100% {
-    background-position: 1000px 0;
-  }
+.gradient-text-urban {
+  background: linear-gradient(135deg, #00ff88, #00e5ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
-
-.shimmer {
-  animation: shimmer 2s infinite;
-  background: linear-gradient(
-    to right,
-    #f0f0f0 0%,
-    #e0e0e0 20%,
-    #f0f0f0 40%,
-    #f0f0f0 100%
-  );
-  background-size: 1000px 100%;
-}
-

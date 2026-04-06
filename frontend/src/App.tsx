@@ -14,14 +14,15 @@ import Header from './components/Header';
 import Leaderboard from './components/Leaderboard';
 import TelegramRequired from './components/TelegramRequired';
 import UserDashboard from './components/UserDashboard';
+import FarewellScreen from './components/FarewellScreen';
 import Waves from './components/Waves';
 
-type Screen = 'loading' | 'name-entry' | 'difficulty' | 'game' | 'leaderboard' | 'dashboard';
+type Screen = 'loading' | 'name-entry' | 'difficulty' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [isInitializing, setIsInitializing] = useState(true);
-  
+
   const {
     telegramUser,
     setTelegramUser,
@@ -31,6 +32,7 @@ function App() {
     currentGame,
     showWinModal,
     resetGame,
+    theme,
   } = useGameStore();
 
   // Initialize app
@@ -55,7 +57,6 @@ function App() {
         if (isDemoMode) {
           console.log('🎮 Running in DEMO MODE (no blockchain required)');
           setIsInitializing(false);
-          // If player already has a name stored, skip name entry
           const savedName = localStorage.getItem('memorabilia_player_name');
           setScreen(savedName ? 'difficulty' : 'name-entry');
         } else {
@@ -100,24 +101,28 @@ function App() {
     setScreen('difficulty');
   };
 
-  // Handle navigation
-  const handleShowLeaderboard = () => {
-    setScreen('leaderboard');
-  };
-
-  const handleShowDashboard = () => {
-    setScreen('dashboard');
-  };
+  const handleShowLeaderboard = () => setScreen('leaderboard');
+  const handleShowDashboard = () => setScreen('dashboard');
 
   const handleBackToDifficulty = () => {
     if (currentGame) {
-      // Show confirmation
       if (confirm('Are you sure you want to quit the current game?')) {
         resetGame();
         setScreen('difficulty');
       }
     } else {
       setScreen('difficulty');
+    }
+  };
+
+  const handleLeaveGame = () => {
+    if (currentGame) {
+      if (confirm('Quit and return to menu?')) {
+        resetGame();
+        setScreen('farewell');
+      }
+    } else {
+      setScreen('farewell');
     }
   };
 
@@ -136,11 +141,18 @@ function App() {
     return <TelegramRequired />;
   }
 
+  // Farewell screen
+  if (screen === 'farewell') {
+    return <FarewellScreen onPlayAgain={() => setScreen('difficulty')} />;
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-museum-blue-100 via-museum-blue-500 to-museum-blue-200 text-[#F1FFE7] relative">
+    <div className={`min-h-screen theme-${theme} relative`}
+      style={{ backgroundColor: 'var(--theme-bg)', color: 'var(--theme-text)' }}
+    >
       <Waves
-        lineColor="rgba(255, 255, 255, 0.2)"
-        backgroundColor="#32373B"
+        lineColor="rgba(255, 255, 255, 0.12)"
+        backgroundColor="transparent"
         waveSpeedX={0.0125}
         waveSpeedY={0.005}
         waveAmpX={32}
@@ -157,11 +169,12 @@ function App() {
             onShowLeaderboard={handleShowLeaderboard}
             onBackToDifficulty={handleBackToDifficulty}
             onShowDashboard={handleShowDashboard}
+            onLeave={handleLeaveGame}
             currentScreen={screen}
           />
         )}
 
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
           {screen === 'name-entry' && (
             <NameEntry onContinue={() => setScreen('difficulty')} />
           )}
@@ -192,4 +205,3 @@ function App() {
 }
 
 export default App;
-

@@ -5,7 +5,7 @@ import { GAME_CONFIGS } from '../types';
 import Card from './Card';
 
 export default function GameBoard() {
-  const { currentGame, flippedCards, flipCard, isChecking } = useGameStore();
+  const { currentGame, flippedCards, flipCard, isChecking, theme } = useGameStore();
   const [elapsedTime, setElapsedTime] = useState(0);
   const [showPreview, setShowPreview] = useState(true);
   const [previewCountdown, setPreviewCountdown] = useState(3);
@@ -54,7 +54,7 @@ export default function GameBoard() {
     prevMatchedCount.current = currentGame.matched_count;
   }, [currentGame?.matched_count]);
 
-  // Track mismatches — when isChecking turns false and no new match happened
+  // Track mismatches
   const prevChecking = useRef(false);
   const matchedAtCheckStart = useRef(0);
   useEffect(() => {
@@ -63,11 +63,9 @@ export default function GameBoard() {
       matchedAtCheckStart.current = currentGame.matched_count;
     }
     if (!isChecking && prevChecking.current && flippedCards.length === 0) {
-      // Check was done: if matched_count didn't increase, it was a mismatch
-      if (currentGame.matched_count === matchedAtCheckStart.current && flippedCards.length === 0) {
-        // We lost the flippedCards already — highlight last two by storing them
+      if (currentGame.matched_count === matchedAtCheckStart.current) {
+        setStreakCount(0);
       }
-      setStreakCount(0);
     }
     prevChecking.current = isChecking;
   }, [isChecking]);
@@ -77,110 +75,118 @@ export default function GameBoard() {
   const config = GAME_CONFIGS[currentGame.difficulty];
   const progress = (currentGame.matched_count / currentGame.total_pairs) * 100;
 
-  // Dynamic grid based on card count
+  // Dynamic grid based on card count — tighter on mobile
   const gridClass =
     config.cardCount === 12 ? 'grid-cols-4' :
     config.cardCount === 20 ? 'grid-cols-5' :
-    'grid-cols-6'; // 30 cards → 6×5
+    'grid-cols-5 sm:grid-cols-6'; // 30 cards: 5-col on mobile to keep cards bigger
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   const difficultyLabel =
-    currentGame.difficulty === 1 ? 'Ancient Era' :
-    currentGame.difficulty === 2 ? 'Medieval Times' : 'Modern Era';
+    currentGame.difficulty === 1 ? '🏺 Ancient Era' :
+    currentGame.difficulty === 2 ? '⚔️ Medieval Times' : '🚀 Modern Era';
+
+  const accentColor = theme === 'museum' ? 'text-amber-400' : theme === 'nature' ? 'text-green-400' : 'text-[#00ff88]';
+  const streakBg = theme === 'museum' ? 'bg-amber-500 text-slate-900' : theme === 'nature' ? 'bg-green-500 text-slate-900' : 'bg-[#00ff88] text-black';
+  const progressBar = theme === 'museum' ? 'from-amber-500 to-amber-700' : theme === 'nature' ? 'from-green-500 to-green-700' : 'from-[#00ff88] to-[#00e5ff]';
 
   return (
-    <div className="max-w-2xl mx-auto px-1">
+    <div className="max-w-2xl mx-auto px-0.5 sm:px-1">
 
-      {/* ── Era label ────────────────────────────────────────────────────── */}
+      {/* Era label */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-3"
+        className="text-center mb-2 sm:mb-3"
       >
-        <span className="text-xs font-semibold tracking-widest uppercase text-museum-bronze-400 bg-museum-bronze-400/10 px-3 py-1 rounded-full border border-museum-bronze-400/20">
+        <span
+          className={`text-[10px] sm:text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full border ${accentColor}`}
+          style={{ borderColor: 'var(--theme-border)', backgroundColor: 'rgba(255,255,255,0.05)' }}
+        >
           {difficultyLabel}
         </span>
       </motion.div>
 
-      {/* ── Preview banner ───────────────────────────────────────────────── */}
+      {/* Preview banner */}
       <AnimatePresence>
         {showPreview && (
           <motion.div
             initial={{ opacity: 0, scaleY: 0 }}
             animate={{ opacity: 1, scaleY: 1 }}
             exit={{ opacity: 0, scaleY: 0 }}
-            className="mb-4 bg-gradient-to-r from-museum-blue-600 to-museum-bronze-600 rounded-xl p-3 text-center overflow-hidden"
+            className="mb-3 rounded-xl p-3 text-center overflow-hidden"
+            style={{ background: 'linear-gradient(to right, var(--theme-accent2), var(--theme-accent))' }}
           >
-            <div className="text-lg font-bold text-white">👀 Memorize the Artifacts!</div>
-            <div className="text-sm text-white/70">
-              Game starts in <span className="font-bold text-museum-gold-300">{previewCountdown}</span>...
+            <div className="text-sm sm:text-base font-bold text-white">👀 Memorize the Artifacts!</div>
+            <div className="text-xs text-white/70">
+              Game starts in <span className="font-bold text-white">{previewCountdown}</span>…
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Stats bar ────────────────────────────────────────────────────── */}
-      <div className="mb-4 grid grid-cols-3 gap-2">
-        {/* Score — dominant */}
-        <div className="col-span-1 bg-museum-stone-800/60 backdrop-blur-sm rounded-xl p-3 text-center border border-museum-gold-400/20 relative overflow-hidden">
+      {/* Stats bar */}
+      <div className="mb-3 grid grid-cols-3 gap-1.5 sm:gap-2">
+        {/* Score */}
+        <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
           <motion.div
             key={currentGame.score}
-            initial={{ scale: 1.3, color: '#fbbf24' }}
-            animate={{ scale: 1, color: '#f59e0b' }}
+            initial={{ scale: 1.3 }}
+            animate={{ scale: 1 }}
             transition={{ duration: 0.25 }}
-            className="text-2xl font-bold text-museum-gold-400"
+            className={`text-lg sm:text-2xl font-bold ${accentColor}`}
           >
             {currentGame.score.toLocaleString()}
           </motion.div>
-          <div className="text-xs text-museum-stone-400">Score</div>
+          <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Score</div>
         </div>
 
         {/* Time */}
-        <div className="bg-museum-stone-800/60 backdrop-blur-sm rounded-xl p-3 text-center border border-museum-bronze-400/20">
-          <div className={`text-2xl font-bold font-mono ${elapsedTime > 60 ? 'text-orange-400' : 'text-museum-blue-300'}`}>
+        <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
+          <div className={`text-lg sm:text-2xl font-bold font-mono ${elapsedTime > 60 ? 'text-orange-400' : 'text-white/90'}`}>
             {formatTime(elapsedTime)}
           </div>
-          <div className="text-xs text-museum-stone-400">Time</div>
+          <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Time</div>
         </div>
 
         {/* Pairs */}
-        <div className="bg-museum-stone-800/60 backdrop-blur-sm rounded-xl p-3 text-center border border-museum-bronze-400/20">
-          <div className="text-2xl font-bold text-museum-bronze-400">
+        <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
+          <div className={`text-lg sm:text-2xl font-bold ${accentColor}`}>
             {currentGame.matched_count}
-            <span className="text-base text-museum-stone-500">/{currentGame.total_pairs}</span>
+            <span className="text-sm sm:text-base text-white/40">/{currentGame.total_pairs}</span>
           </div>
-          <div className="text-xs text-museum-stone-400">Pairs</div>
+          <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Pairs</div>
         </div>
       </div>
 
-      {/* ── Progress bar ─────────────────────────────────────────────────── */}
-      <div className="mb-4 bg-museum-stone-800/40 rounded-full h-2 overflow-hidden">
+      {/* Progress bar */}
+      <div className="mb-3 rounded-full h-1.5 sm:h-2 overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
         <motion.div
-          className="h-full bg-gradient-to-r from-museum-gold-500 to-museum-bronze-400"
+          className={`h-full bg-gradient-to-r ${progressBar}`}
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
         />
       </div>
 
-      {/* ── Streak popup ─────────────────────────────────────────────────── */}
+      {/* Streak popup */}
       <AnimatePresence>
         {showStreak && streakCount >= 2 && (
           <motion.div
             initial={{ opacity: 0, scale: 0.5, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: -10 }}
-            className="mb-3 text-center"
+            className="mb-2 text-center"
           >
-            <span className="inline-block bg-museum-gold-500 text-museum-stone-900 font-bold text-sm px-4 py-1 rounded-full shadow-lg">
+            <span className={`inline-block font-bold text-xs sm:text-sm px-4 py-1 rounded-full shadow-lg ${streakBg}`}>
               🔥 {streakCount} in a row!
             </span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Game Board ───────────────────────────────────────────────────── */}
-      <div className={`grid ${gridClass} gap-2 sm:gap-2.5`}>
+      {/* Game Board */}
+      <div className={`grid ${gridClass} gap-1.5 sm:gap-2`}>
         {currentGame.cards.map((card, index) => {
           const isMatched = card.is_matched;
           const isFlipped = showPreview || flippedCards.includes(index) || isMatched;
@@ -202,27 +208,27 @@ export default function GameBoard() {
         })}
       </div>
 
-      {/* ── Checking indicator ───────────────────────────────────────────── */}
+      {/* Checking indicator */}
       <AnimatePresence>
         {isChecking && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="mt-4 text-center text-museum-gold-400 text-sm font-medium"
+            className={`mt-3 text-center text-xs sm:text-sm font-medium ${accentColor}`}
           >
             <motion.span
               animate={{ opacity: [1, 0.4, 1] }}
               transition={{ duration: 0.6, repeat: Infinity }}
             >
-              🔍 Examining artifacts...
+              🔍 Examining artifacts…
             </motion.span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Moves counter below board */}
-      <div className="mt-3 text-center text-xs text-museum-stone-500">
+      {/* Moves counter */}
+      <div className="mt-2 text-center text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>
         {currentGame.moves} moves · optimal {config.optimalMoves}
       </div>
     </div>
