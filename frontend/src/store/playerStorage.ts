@@ -1,8 +1,9 @@
 // Local storage for player scores and stats in demo mode
-import { GameState, LeaderboardEntry } from '../types';
+import { GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal } from '../types';
 
 const STORAGE_KEY = 'memorabilia_player_data';
 const LEADERBOARD_KEY = 'memorabilia_leaderboard';
+const LEVEL_PROGRESS_KEY = 'memorabilia_level_progress';
 
 export interface LocalPlayerData {
   telegramId: number;
@@ -256,6 +257,88 @@ export function getLeaderboardStats() {
     highestScore: leaderboard[0]?.score || 0,
   };
 }
+
+// ── Level Progress ────────────────────────────────────────────────────────────
+
+export function getAllLevelProgress(): LevelProgress[] {
+  try {
+    const data = localStorage.getItem(LEVEL_PROGRESS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAllLevelProgress(progress: LevelProgress[]): void {
+  try {
+    localStorage.setItem(LEVEL_PROGRESS_KEY, JSON.stringify(progress));
+  } catch (error) {
+    console.error('Failed to save level progress:', error);
+  }
+}
+
+export function getLevelProgress(era: Difficulty, level: number): LevelProgress | null {
+  const all = getAllLevelProgress();
+  return all.find((lp) => lp.era === era && lp.level === level) ?? null;
+}
+
+export function saveLevelProgress(incoming: LevelProgress): void {
+  const all     = getAllLevelProgress();
+  const index   = all.findIndex((lp) => lp.era === incoming.era && lp.level === incoming.level);
+  const existing = index !== -1 ? all[index] : null;
+
+  // Merge: keep best values
+  const merged: LevelProgress = {
+    era:       incoming.era,
+    level:     incoming.level,
+    completed: incoming.completed || (existing?.completed ?? false),
+    bestScore: Math.max(incoming.bestScore, existing?.bestScore ?? 0),
+    bestTime:  existing?.bestTime
+      ? Math.min(incoming.bestTime, existing.bestTime)
+      : incoming.bestTime,
+    bestMedal: mergeMedal(incoming.bestMedal, existing?.bestMedal),
+    stars:     Math.max(incoming.stars, existing?.stars ?? 0),
+    completedAt: incoming.completedAt ?? existing?.completedAt,
+  };
+
+  if (index !== -1) {
+    all[index] = merged;
+  } else {
+    all.push(merged);
+  }
+
+  saveAllLevelProgress(all);
+}
+
+function medalRank(medal: TimeMedal | undefined): number {
+  if (medal === 'gold')   return 3;
+  if (medal === 'silver') return 2;
+  if (medal === 'bronze') return 1;
+  return 0;
+}
+
+function mergeMedal(a: TimeMedal, b: TimeMedal | undefined): TimeMedal {
+  return medalRank(a) >= medalRank(b) ? a : b!;
+}
+
+export function getEraCompletionStatus(): Record<Difficulty, { levelsCompleted: number; maxLevel: number }> {
+  const all = getAllLevelProgress();
+
+  function eraStatus(era: Difficulty) {
+    const eraProgress = all.filter((lp) => lp.era === era && lp.completed);
+    const levelsCompleted = eraProgress.length;
+    const maxLevel = eraProgress.reduce((max, lp) => Math.max(max, lp.level), 0);
+    return { levelsCompleted, maxLevel };
+  }
+
+  return {
+    [Difficulty.Easy]:   eraStatus(Difficulty.Easy),
+    [Difficulty.Medium]: eraStatus(Difficulty.Medium),
+    [Difficulty.Hard]:   eraStatus(Difficulty.Hard),
+  };
+}
+
+// ── Legacy helpers ────────────────────────────────────────────────────────────
 
 /**
  * Clear all data (for testing)

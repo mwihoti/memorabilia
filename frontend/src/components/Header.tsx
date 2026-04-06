@@ -10,7 +10,7 @@ interface HeaderProps {
 }
 
 export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDashboard, onLeave, currentScreen }: HeaderProps) {
-  const { telegramUser, playerName, theme } = useGameStore();
+  const { telegramUser, playerName, theme, streak } = useGameStore();
   const displayName = playerName || telegramUser?.first_name || null;
   const avatarLetter = displayName?.[0]?.toUpperCase() ?? '?';
 
@@ -24,6 +24,7 @@ export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDa
       btnSecondary: 'bg-amber-700/40 hover:bg-amber-700/60 text-amber-100',
       icon: '🏛️',
       name: 'Time-Travel Museum',
+      streak: 'text-orange-400',
     },
     nature: {
       header: 'bg-[#14532d]/90 border-green-400/30',
@@ -34,6 +35,7 @@ export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDa
       btnSecondary: 'bg-green-700/40 hover:bg-green-700/60 text-green-100',
       icon: '🌿',
       name: 'Nature Trails',
+      streak: 'text-orange-400',
     },
     urban: {
       header: 'bg-[#18181b]/90 border-[#00ff88]/20',
@@ -44,6 +46,7 @@ export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDa
       btnSecondary: 'bg-white/5 hover:bg-white/10 text-[#00ff88] border border-[#00ff88]/30',
       icon: '🎨',
       name: 'Urban Gallery',
+      streak: 'text-orange-400',
     },
   }[theme];
 
@@ -68,6 +71,17 @@ export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDa
           {/* Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
             <WalletButton />
+
+            {/* Streak indicator */}
+            {streak.currentStreak > 0 && (
+              <div
+                className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-bold ${themeStyles.streak} bg-orange-500/10 border border-orange-500/20`}
+                title={`${streak.currentStreak}-day streak`}
+              >
+                <span>🔥</span>
+                <span>{streak.currentStreak}</span>
+              </div>
+            )}
 
             {currentScreen === 'game' && (
               <button

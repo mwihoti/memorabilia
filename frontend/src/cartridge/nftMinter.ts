@@ -83,7 +83,7 @@ export async function mintScoreNFT(params: NFTMintParams): Promise<NFTMintResult
     // Call mint_score_nft entrypoint with properly formatted parameters
     const result = await contract.mint_score_nft(
       formattedRecipient,  // recipient as ContractAddress
-      params.score,        // score as u256
+      params.score,        // score as u32
       params.timestamp,    // timestamp as u64
       params.gameId,       // game_id as u32
       params.difficulty    // difficulty as u8
@@ -177,13 +177,13 @@ const NFT_ABI = [
     type: 'function',
     inputs: [
       { name: 'recipient', type: 'ContractAddress' },
-      { name: 'score', type: 'u256' },
+      { name: 'score', type: 'u32' },
       { name: 'timestamp', type: 'u64' },
       { name: 'game_id', type: 'u32' },
       { name: 'difficulty', type: 'u8' },
     ],
     outputs: [
-      { name: 'token_id', type: 'u256' },
+      { name: 'token_id', type: 'u32' },
     ],
     state_mutability: 'external',
   },
@@ -191,11 +191,11 @@ const NFT_ABI = [
     name: 'get_nft',
     type: 'function',
     inputs: [
-      { name: 'token_id', type: 'u256' },
+      { name: 'token_id', type: 'u32' },
     ],
     outputs: [
       { name: 'recipient', type: 'ContractAddress' },
-      { name: 'score', type: 'u256' },
+      { name: 'score', type: 'u32' },
       { name: 'timestamp', type: 'u64' },
       { name: 'game_id', type: 'u32' },
       { name: 'difficulty', type: 'u8' },
@@ -207,7 +207,7 @@ const NFT_ABI = [
     type: 'function',
     inputs: [],
     outputs: [
-      { name: 'total', type: 'u256' },
+      { name: 'total', type: 'u32' },
     ],
     state_mutability: 'view',
   },

@@ -1,13 +1,26 @@
 import { create } from 'zustand';
 import { Account } from 'starknet';
-import { GameState, Difficulty, Card, PlayerStats, LeaderboardEntry, TelegramUser, GAME_CONFIGS, calculateStars } from '../types';
+import {
+  GameState, Difficulty, Card, PlayerStats, LeaderboardEntry, TelegramUser,
+  GAME_CONFIGS, calculateStars, calculateStars as _calcStars,
+  ComboState, LevelProgress, TimeMedal, ReplayMove, Achievement, DailyStreak,
+  ERA_LEVEL_CONFIGS, EraLevel,
+  getComboMultiplier, getTimeMedal, getTimeBonusScore, getStreakMultiplier, isEraUnlocked,
+} from '../types';
 import { GameController } from '../dojo/gameController';
-import { createDemoGame, checkCardsMatch, calculateScore, getEmojisForDifficulty } from './demoGame';
+import {
+  createDemoGame, checkCardsMatch, calculateScore, getEmojisForDifficulty,
+  createLevelGame, calculateLevelScore,
+} from './demoGame';
 import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } from '../utils/sounds';
 import { cartridgeController } from '../cartridge/CartridgeController';
 import { mintScoreNFT } from '../cartridge/nftMinter';
-import { addGameScore } from './playerStorage';
+import { addGameScore, saveLevelProgress, getAllLevelProgress } from './playerStorage';
 import { submitScore } from '../lib/api';
+import { checkAndUnlockAchievements } from './achievementStore';
+import { loadStreak, recordGamePlayed } from './streakStore';
+import { saveDailyChallenge } from './dailyChallenge';
+import { buildReplay, saveGhostReplayIfBest } from './ghostReplay';
 
 export type Theme = 'museum' | 'nature' | 'urban';
 
@@ -45,6 +58,19 @@ interface GameStore {
   playerStats: PlayerStats | null;
   leaderboard: LeaderboardEntry[];
 
+  // ── Level System State ─────────────────────────────────────────────────────
+  currentEra: Difficulty | null;
+  currentLevel: number;
+  combo: ComboState;
+  mismatches: number;
+  maxCombo: number;
+  replayMoves: ReplayMove[];
+  gameStartMs: number;
+  isDailyChallenge: boolean;
+  levelProgress: LevelProgress[];
+  streak: DailyStreak;
+  newlyUnlockedAchievements: Achievement[];
+
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
   setPlayerName: (name: string) => void;
@@ -66,6 +92,12 @@ interface GameStore {
   checkMatch: () => Promise<void>;
   abandonGame: () => Promise<void>;
   resetGame: () => void;
+
+  // ── Level System Actions ───────────────────────────────────────────────────
+  setCurrentLevel: (era: Difficulty, level: number) => void;
+  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean) => Promise<void>;
+  clearNewAchievements: () => void;
+  loadLevelProgress: () => void;
 
   // UI Actions
   setSelectedDifficulty: (difficulty: Difficulty | null) => void;
@@ -106,6 +138,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   playerStats: null,
   leaderboard: [],
+
+  // Level System initial state
+  currentEra: null,
+  currentLevel: 1,
+  combo: { count: 0, multiplier: 1 },
+  mismatches: 0,
+  maxCombo: 0,
+  replayMoves: [],
+  gameStartMs: 0,
+  isDailyChallenge: false,
+  levelProgress: getAllLevelProgress(),
+  streak: loadStreak(),
+  newlyUnlockedAchievements: [],
 
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
@@ -368,6 +413,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const newMatchedCount = currentGame.matched_count + 1;
         const newMoves = currentGame.moves + 1;
 
+        // ── Combo tracking (demo mode only) ───────────────────────────────
+        const { combo, maxCombo: prevMaxCombo, replayMoves, gameStartMs, currentEra, currentLevel } = get();
+        const newComboCount  = !gameController ? combo.count + 1 : combo.count;
+        const newMultiplier  = !gameController ? getComboMultiplier(newComboCount) : combo.multiplier;
+        const newMaxCombo    = Math.max(prevMaxCombo, newComboCount);
+
+        // Record replay moves
+        const nowMs = Date.now();
+        const newReplayMoves: ReplayMove[] = !gameController
+          ? [
+              ...replayMoves,
+              { cardIndex: flippedCards[0], timestamp: nowMs - gameStartMs },
+              { cardIndex: flippedCards[1], timestamp: nowMs - gameStartMs + 1 },
+            ]
+          : replayMoves;
+
+        if (!gameController) {
+          set({ combo: { count: newComboCount, multiplier: newMultiplier }, maxCombo: newMaxCombo, replayMoves: newReplayMoves });
+        }
+
         // Calculate score
         const score = calculateScore({
           ...currentGame,
@@ -391,20 +456,87 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
         // Check if game is won
         if (newMatchedCount === currentGame.total_pairs) {
+          const completedAt = Date.now();
           const finalGame = {
             ...updatedGame,
-            completed_at: Date.now(),
+            completed_at: completedAt,
             status: 1, // Completed
           };
 
           set({ currentGame: finalGame });
 
+          // ── Level-aware completion (demo mode) ─────────────────────────
+          if (!gameController && currentEra !== null) {
+            const elapsedSeconds = Math.floor((completedAt - currentGame.started_at) / 1000);
+            const levelConfig: EraLevel = ERA_LEVEL_CONFIGS[currentEra][currentLevel - 1];
+            const medal    = getTimeMedal(elapsedSeconds, levelConfig);
+            const timeBonus = getTimeBonusScore(elapsedSeconds, levelConfig);
+            const finalMaxCombo  = newMaxCombo;
+            const levelScore = calculateLevelScore(finalGame, finalMaxCombo, timeBonus);
+            const stars      = calculateStars(finalGame.moves, levelConfig.optimalMoves);
+
+            // Update streak
+            const updatedStreak = recordGamePlayed();
+
+            // Save level progress
+            const progress: LevelProgress = {
+              era:         currentEra,
+              level:       currentLevel,
+              completed:   true,
+              bestScore:   levelScore,
+              bestTime:    elapsedSeconds,
+              bestMedal:   medal,
+              stars,
+              completedAt: completedAt,
+            };
+            saveLevelProgress(progress);
+            const updatedLevelProgress = getAllLevelProgress();
+
+            // Daily challenge
+            const { isDailyChallenge } = get();
+            if (isDailyChallenge) {
+              saveDailyChallenge(levelScore, medal);
+            }
+
+            // Ghost replay
+            const { replayMoves: finalReplayMoves } = get();
+            const replay = buildReplay(
+              finalGame.game_id,
+              currentEra,
+              currentLevel,
+              finalReplayMoves,
+              completedAt - currentGame.started_at,
+              levelScore,
+            );
+            saveGhostReplayIfBest(replay);
+
+            // Achievements
+            const newAchievements = checkAndUnlockAchievements({
+              gameCompleted:   true,
+              elapsedSeconds,
+              mismatches:      get().mismatches,
+              maxCombo:        finalMaxCombo,
+              medal,
+              era:             currentEra,
+              level:           currentLevel,
+              levelProgress:   updatedLevelProgress,
+              streak:          updatedStreak,
+              isDailyChallenge,
+            });
+
+            set({
+              levelProgress:              updatedLevelProgress,
+              streak:                     updatedStreak,
+              newlyUnlockedAchievements:  newAchievements,
+            });
+          }
+
           // Save score to local storage
           const { telegramUser, playerName: storedName } = get();
           if (telegramUser) {
-            const elapsedTime = Math.floor((Date.now() - currentGame.started_at) / 1000);
+            const elapsedTime = Math.floor((completedAt - currentGame.started_at) / 1000);
             const playerName = storedName || telegramUser.first_name || 'Anonymous Player';
-            
+
             console.log('🎯 Game Completed - Saving Score:', {
               telegramId: telegramUser.id,
               playerName: playerName,
@@ -413,7 +545,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               moves: finalGame.moves,
               time: elapsedTime,
             });
-            
+
             addGameScore(
               telegramUser.id,
               playerName,
@@ -462,6 +594,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       } else {
         // Play mismatch sound
         playMismatchSound();
+
+        // Combo reset and mismatch tracking (demo mode only)
+        if (!gameController) {
+          const { mismatches } = get();
+          set({
+            combo:      { count: 0, multiplier: 1 },
+            mismatches: mismatches + 1,
+          });
+        }
 
         // Not a match - flip cards back after delay
         setTimeout(() => {
@@ -514,6 +655,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
   
+  // ── Level System Actions ───────────────────────────────────────────────────
+
+  setCurrentLevel: (era: Difficulty, level: number) => {
+    set({ currentEra: era, currentLevel: level });
+  },
+
+  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false) => {
+    set({ isGameLoading: true });
+    try {
+      const newGame = createLevelGame(era, level);
+      set({
+        currentGame:               newGame,
+        selectedDifficulty:        era,
+        flippedCards:              [],
+        isGameLoading:             false,
+        showWinModal:              false,
+        currentEra:                era,
+        currentLevel:              level,
+        combo:                     { count: 0, multiplier: 1 },
+        mismatches:                0,
+        maxCombo:                  0,
+        replayMoves:               [],
+        gameStartMs:               Date.now(),
+        isDailyChallenge,
+        newlyUnlockedAchievements: [],
+      });
+    } catch (error) {
+      console.error('Failed to start level game:', error);
+      set({ isGameLoading: false });
+    }
+  },
+
+  clearNewAchievements: () => set({ newlyUnlockedAchievements: [] }),
+
+  loadLevelProgress: () => {
+    set({ levelProgress: getAllLevelProgress(), streak: loadStreak() });
+  },
+
   // UI Actions
   setSelectedDifficulty: (difficulty) => set({ selectedDifficulty: difficulty }),
   setShowWinModal: (show) => set({ showWinModal: show }),

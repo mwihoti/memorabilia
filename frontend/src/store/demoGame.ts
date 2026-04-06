@@ -1,4 +1,4 @@
-import { GameState, Difficulty, Card } from '../types';
+import { GameState, Difficulty, Card, ERA_LEVEL_CONFIGS } from '../types';
 
 // ── Large era-specific emoji pools (20+ each, no duplicates) ─────────────────
 
@@ -143,4 +143,98 @@ export function calculateScore(game: GameState): number {
   const movePenalty = extraMoves * 50;
 
   return Math.max(0, Math.floor((baseScore + timeBonus - movePenalty) * difficultyMultiplier));
+}
+
+// ── Seeded shuffle (mulberry32 PRNG) ──────────────────────────────────────────
+
+function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
+  return function () {
+    s += 0x6d2b79f5;
+    let z = s;
+    z = Math.imul(z ^ (z >>> 15), z | 1);
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+    return ((z ^ (z >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+export function seededShuffle<T>(array: T[], seed: number): T[] {
+  const rng      = mulberry32(seed);
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+// ── Level-aware game creation ─────────────────────────────────────────────────
+
+export function createLevelGame(era: Difficulty, level: number, seed?: number): GameState {
+  const config     = ERA_LEVEL_CONFIGS[era][level - 1];
+  const { pairCount } = config;
+
+  // Pick emojis for this era
+  const pool      = getEmojisForDifficulty(era);
+  const emojiPick = seed !== undefined
+    ? seededShuffle([...pool], seed).slice(0, pairCount)
+    : pickRandom(pool, pairCount);
+
+  // Build paired values [0,0,1,1,...,n,n]
+  const values: number[] = [];
+  for (let i = 0; i < pairCount; i++) {
+    values.push(i, i);
+  }
+
+  const shuffledValues = seed !== undefined
+    ? seededShuffle(values, seed + 1)
+    : shuffleArray(values);
+
+  const cards: Card[] = shuffledValues.map((value, index) => ({
+    id: index,
+    value,
+    is_flipped: false,
+    is_matched: false,
+    position: index,
+  }));
+
+  return {
+    game_id:       Math.floor(Math.random() * 10_000_000),
+    player:        'demo_player',
+    difficulty:    era,
+    cards,
+    emojis:        emojiPick,
+    flipped_indices: [],
+    matched_count: 0,
+    total_pairs:   pairCount,
+    moves:         0,
+    score:         0,
+    started_at:    Date.now(),
+    completed_at:  0,
+    status:        0,
+    elapsed_time:  0,
+  };
+}
+
+// ── Level-aware score calculation ─────────────────────────────────────────────
+
+export function calculateLevelScore(
+  game: GameState,
+  maxCombo: number,
+  timeBonusScore: number
+): number {
+  const baseScore = 100 * game.total_pairs; // 100 pts per pair
+  const difficultyMultiplier =
+    game.difficulty === Difficulty.Easy   ? 10 :
+    game.difficulty === Difficulty.Medium ? 15 : 20;
+
+  const optimalMoves = game.total_pairs;
+  const extraMoves   = Math.max(0, game.moves - optimalMoves);
+  const movePenalty  = extraMoves * 50;
+
+  // Combo bonus: 50 pts per combo level achieved
+  const comboBonus = maxCombo * 50;
+
+  const raw = (baseScore + timeBonusScore + comboBonus - movePenalty) * difficultyMultiplier;
+  return Math.max(0, Math.floor(raw));
 }

@@ -6,6 +6,7 @@ import { hapticImpact } from '../telegram/telegram';
 
 interface DifficultySelectorProps {
   onStart: () => void;
+  onSwitchToLevels?: () => void;
 }
 
 const THEMES: { id: Theme; label: string; icon: string; desc: string }[] = [
@@ -14,7 +15,7 @@ const THEMES: { id: Theme; label: string; icon: string; desc: string }[] = [
   { id: 'urban',  label: 'Urban',   icon: '🎨', desc: 'Neon graffiti streets' },
 ];
 
-export default function DifficultySelector({ onStart }: DifficultySelectorProps) {
+export default function DifficultySelector({ onStart, onSwitchToLevels }: DifficultySelectorProps) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | null>(null);
   const { startNewGame, isGameLoading, playerName, telegramUser, theme, setTheme } = useGameStore();
   const displayName = playerName || telegramUser?.first_name || 'Curator';
@@ -63,6 +64,27 @@ export default function DifficultySelector({ onStart }: DifficultySelectorProps)
 
   return (
     <div className="max-w-2xl mx-auto">
+
+      {/* Level system upgrade notice */}
+      {onSwitchToLevels && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-5 flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-white/15 bg-white/5"
+        >
+          <div className="flex items-center gap-2 text-sm text-white/70">
+            <span>⬆️</span>
+            <span>Try the new <span className="font-bold text-white">Level System</span>!</span>
+          </div>
+          <button
+            onClick={() => { hapticImpact('light'); onSwitchToLevels(); }}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gradient-to-r ${themeAccent.cta} text-white`}
+          >
+            Switch
+          </button>
+        </motion.div>
+      )}
+
       {/* Welcome */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

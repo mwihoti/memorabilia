@@ -3,6 +3,8 @@ import { useGameStore } from './store/gameStore';
 import { setupDojo, createBurnerAccount } from './dojo/setup';
 import { createGameController } from './dojo/gameController';
 import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp } from './telegram/telegram';
+import { GhostReplay, Difficulty } from './types';
+import { loadGhostReplay } from './store/ghostReplay';
 
 // Components
 import LoadingScreen from './components/LoadingScreen';
@@ -16,12 +18,17 @@ import TelegramRequired from './components/TelegramRequired';
 import UserDashboard from './components/UserDashboard';
 import FarewellScreen from './components/FarewellScreen';
 import Waves from './components/Waves';
+import LevelSelector from './components/LevelSelector';
+import AchievementToast from './components/AchievementToast';
+import GhostReplayModal from './components/GhostReplayModal';
 
-type Screen = 'loading' | 'name-entry' | 'difficulty' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
+type Screen = 'loading' | 'name-entry' | 'difficulty' | 'level-select' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [isInitializing, setIsInitializing] = useState(true);
+  const [showGhostReplay, setShowGhostReplay] = useState(false);
+  const [ghostReplayData, setGhostReplayData] = useState<GhostReplay | null>(null);
 
   const {
     telegramUser,
@@ -33,6 +40,11 @@ function App() {
     showWinModal,
     resetGame,
     theme,
+    startLevelGame,
+    currentEra,
+    currentLevel,
+    newlyUnlockedAchievements,
+    clearNewAchievements,
   } = useGameStore();
 
   // Initialize app
@@ -58,7 +70,8 @@ function App() {
           console.log('🎮 Running in DEMO MODE (no blockchain required)');
           setIsInitializing(false);
           const savedName = localStorage.getItem('memorabilia_player_name');
-          setScreen(savedName ? 'difficulty' : 'name-entry');
+          // Go to level-select (new main menu) if name is saved, else name-entry
+          setScreen(savedName ? 'level-select' : 'name-entry');
         } else {
           console.log('⛓️ Running in BLOCKCHAIN MODE');
 
@@ -76,13 +89,14 @@ function App() {
           console.log('✅ Blockchain initialization complete!');
           setIsInitializing(false);
           const savedName = localStorage.getItem('memorabilia_player_name');
-          setScreen(savedName ? 'difficulty' : 'name-entry');
+          // Go to level-select if name saved, else name-entry
+          setScreen(savedName ? 'level-select' : 'name-entry');
         }
       } catch (error) {
         console.error('❌ Initialization failed:', error);
         setIsInitializing(false);
         const savedName = localStorage.getItem('memorabilia_player_name');
-        setScreen(savedName ? 'difficulty' : 'name-entry');
+        setScreen(savedName ? 'level-select' : 'name-entry');
       }
     }
 
@@ -97,8 +111,31 @@ function App() {
   }, [currentGame, screen]);
 
   const handleWinModalClose = () => {
+    // Check if a ghost replay is available for the completed era/level
+    if (currentEra !== null) {
+      const replay = loadGhostReplay(currentEra, currentLevel);
+      if (replay) {
+        setGhostReplayData(replay);
+      }
+    }
     resetGame();
-    setScreen('difficulty');
+    setScreen('level-select');
+  };
+
+  const handleShowGhostReplay = () => {
+    // Load the latest best replay when triggered from WinModal
+    if (currentEra !== null) {
+      const replay = loadGhostReplay(currentEra, currentLevel);
+      if (replay) {
+        setGhostReplayData(replay);
+        setShowGhostReplay(true);
+      }
+    }
+  };
+
+  const handleGhostReplayClose = () => {
+    setShowGhostReplay(false);
+    setGhostReplayData(null);
   };
 
   const handleShowLeaderboard = () => setScreen('leaderboard');
@@ -108,10 +145,10 @@ function App() {
     if (currentGame) {
       if (confirm('Are you sure you want to quit the current game?')) {
         resetGame();
-        setScreen('difficulty');
+        setScreen('level-select');
       }
     } else {
-      setScreen('difficulty');
+      setScreen('level-select');
     }
   };
 
@@ -124,6 +161,15 @@ function App() {
     } else {
       setScreen('farewell');
     }
+  };
+
+  const handleLevelStart = async (era: Difficulty, level: number, isDailyChallenge: boolean) => {
+    await startLevelGame(era, level, isDailyChallenge);
+    setScreen('game');
+  };
+
+  const handleSwitchToLevels = () => {
+    setScreen('level-select');
   };
 
   // Always show loading first while we initialise
@@ -143,7 +189,7 @@ function App() {
 
   // Farewell screen
   if (screen === 'farewell') {
-    return <FarewellScreen onPlayAgain={() => setScreen('difficulty')} />;
+    return <FarewellScreen onPlayAgain={() => setScreen('level-select')} />;
   }
 
   return (
@@ -176,11 +222,20 @@ function App() {
 
         <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
           {screen === 'name-entry' && (
-            <NameEntry onContinue={() => setScreen('difficulty')} />
+            <NameEntry onContinue={() => setScreen('level-select')} />
           )}
 
+          {/* New level-select screen — primary entry point */}
+          {screen === 'level-select' && (
+            <LevelSelector onStart={handleLevelStart} />
+          )}
+
+          {/* Legacy difficulty screen — kept for blockchain mode backward compat */}
           {screen === 'difficulty' && (
-            <DifficultySelector onStart={() => setScreen('game')} />
+            <DifficultySelector
+              onStart={() => setScreen('game')}
+              onSwitchToLevels={handleSwitchToLevels}
+            />
           )}
 
           {screen === 'game' && currentGame && (
@@ -197,9 +252,26 @@ function App() {
         </main>
 
         {showWinModal && (
-          <WinModal onClose={handleWinModalClose} />
+          <WinModal
+            onClose={handleWinModalClose}
+            onShowGhostReplay={handleShowGhostReplay}
+          />
+        )}
+
+        {/* Ghost replay modal — shown after win modal closes if replay is available */}
+        {showGhostReplay && ghostReplayData && (
+          <GhostReplayModal
+            replay={ghostReplayData}
+            onClose={handleGhostReplayClose}
+          />
         )}
       </div>
+
+      {/* Achievement toast — always rendered, reads from store */}
+      <AchievementToast
+        achievements={newlyUnlockedAchievements}
+        onDismiss={clearNewAchievements}
+      />
     </div>
   );
 }

@@ -1,11 +1,24 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
-import { GAME_CONFIGS } from '../types';
+import { GAME_CONFIGS, ERA_LEVEL_CONFIGS, getTimeMedal } from '../types';
 import Card from './Card';
+import ComboDisplay from './ComboDisplay';
 
 export default function GameBoard() {
-  const { currentGame, flippedCards, flipCard, isChecking, theme } = useGameStore();
+  const {
+    currentGame,
+    flippedCards,
+    flipCard,
+    isChecking,
+    theme,
+    combo,
+    mismatches,
+    currentEra,
+    currentLevel,
+    streak,
+  } = useGameStore();
+
   const [elapsedTime, setElapsedTime] = useState(0);
   const [showPreview, setShowPreview] = useState(true);
   const [previewCountdown, setPreviewCountdown] = useState(3);
@@ -14,12 +27,29 @@ export default function GameBoard() {
   const [showStreak, setShowStreak] = useState(false);
   const prevMatchedCount = useRef(0);
 
-  // Preview countdown
+  // Preview countdown — use level config preview duration if available
   useEffect(() => {
     if (!currentGame) return;
     setShowPreview(true);
-    setPreviewCountdown(3);
     prevMatchedCount.current = 0;
+
+    // Determine preview duration from level config if in level mode
+    let previewDurationMs = 3000;
+    if (currentEra !== null) {
+      const levelConfig = ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1];
+      if (levelConfig) {
+        previewDurationMs = levelConfig.previewDuration;
+      }
+    }
+
+    const previewSeconds = Math.ceil(previewDurationMs / 1000) || 0;
+    setPreviewCountdown(previewSeconds);
+
+    if (previewDurationMs === 0) {
+      // No preview for highest levels
+      setShowPreview(false);
+      return;
+    }
 
     const tick = setInterval(() => {
       setPreviewCountdown(c => {
@@ -28,7 +58,7 @@ export default function GameBoard() {
       });
     }, 1000);
 
-    const hide = setTimeout(() => setShowPreview(false), 3000);
+    const hide = setTimeout(() => setShowPreview(false), previewDurationMs);
     return () => { clearInterval(tick); clearTimeout(hide); };
   }, [currentGame?.game_id]);
 
@@ -75,6 +105,39 @@ export default function GameBoard() {
   const config = GAME_CONFIGS[currentGame.difficulty];
   const progress = (currentGame.matched_count / currentGame.total_pairs) * 100;
 
+  // Resolve level config for time-limit ring and level labels
+  const levelConfig = currentEra !== null
+    ? ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1] ?? null
+    : null;
+
+  // Time medal calculation (only when in level mode)
+  const timeMedal = levelConfig ? getTimeMedal(elapsedTime, levelConfig) : null;
+
+  // Countdown ring values — based on gold time limit
+  const goldLimit = levelConfig?.timeLimitGold ?? 0;
+  const ringProgress = goldLimit > 0
+    ? Math.max(0, Math.min(1, 1 - elapsedTime / goldLimit))
+    : null;
+
+  // Ring color: green >50%, yellow 25-50%, red <25%
+  const ringColor =
+    ringProgress === null ? 'var(--theme-accent)'
+    : ringProgress > 0.5  ? '#22c55e'
+    : ringProgress > 0.25 ? '#eab308'
+    : '#ef4444';
+
+  // Medal emoji
+  const medalEmoji =
+    timeMedal === 'gold'   ? '🥇'
+    : timeMedal === 'silver' ? '🥈'
+    : timeMedal === 'bronze' ? '🥉'
+    : timeMedal === 'none'   ? '💨'
+    : null;
+
+  // SVG ring dimensions
+  const RING_R = 18;
+  const RING_CIRC = 2 * Math.PI * RING_R;
+
   // Dynamic grid based on card count — tighter on mobile
   const gridClass =
     config.cardCount === 12 ? 'grid-cols-4' :
@@ -86,6 +149,14 @@ export default function GameBoard() {
   const difficultyLabel =
     currentGame.difficulty === 1 ? '🏺 Ancient Era' :
     currentGame.difficulty === 2 ? '⚔️ Medieval Times' : '🚀 Modern Era';
+
+  // Level label (e.g. "Scholar") from config
+  const levelLabel = levelConfig?.label ?? null;
+
+  // Preview banner label
+  const previewLabel = levelConfig
+    ? `Level ${currentLevel} · ${levelConfig.label} · ${(levelConfig.previewDuration / 1000).toFixed(1)}s preview`
+    : null;
 
   const accentColor = theme === 'museum' ? 'text-amber-400' : theme === 'nature' ? 'text-green-400' : 'text-[#00ff88]';
   const streakBg = theme === 'museum' ? 'bg-amber-500 text-slate-900' : theme === 'nature' ? 'bg-green-500 text-slate-900' : 'bg-[#00ff88] text-black';
@@ -105,6 +176,7 @@ export default function GameBoard() {
           style={{ borderColor: 'var(--theme-border)', backgroundColor: 'rgba(255,255,255,0.05)' }}
         >
           {difficultyLabel}
+          {levelLabel && <span className="ml-1.5 opacity-60">· {levelLabel}</span>}
         </span>
       </motion.div>
 
@@ -120,14 +192,21 @@ export default function GameBoard() {
           >
             <div className="text-sm sm:text-base font-bold text-white">👀 Memorize the Artifacts!</div>
             <div className="text-xs text-white/70">
-              Game starts in <span className="font-bold text-white">{previewCountdown}</span>…
+              {previewLabel
+                ? previewLabel
+                : <>Game starts in <span className="font-bold text-white">{previewCountdown}</span>…</>}
             </div>
+            {previewLabel && (
+              <div className="text-xs text-white/60 mt-0.5">
+                Starts in <span className="font-bold text-white">{previewCountdown}</span>…
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Stats bar */}
-      <div className="mb-3 grid grid-cols-3 gap-1.5 sm:gap-2">
+      <div className="mb-3 grid grid-cols-4 gap-1.5 sm:gap-2">
         {/* Score */}
         <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
           <motion.div
@@ -140,13 +219,46 @@ export default function GameBoard() {
             {currentGame.score.toLocaleString()}
           </motion.div>
           <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Score</div>
+          {/* Streak multiplier badge */}
+          {streak.multiplierBonus > 0 && (
+            <div className="mt-0.5 text-[9px] font-semibold text-orange-400">
+              🔥 +{Math.round(streak.multiplierBonus * 100)}% streak
+            </div>
+          )}
         </div>
 
-        {/* Time */}
-        <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
-          <div className={`text-lg sm:text-2xl font-bold font-mono ${elapsedTime > 60 ? 'text-orange-400' : 'text-white/90'}`}>
-            {formatTime(elapsedTime)}
-          </div>
+        {/* Time — with countdown ring when in level mode */}
+        <div className="rounded-xl p-2 sm:p-3 text-center border relative" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
+          {ringProgress !== null ? (
+            /* Countdown ring */
+            <div className="flex items-center justify-center gap-1">
+              <svg width="42" height="42" viewBox="0 0 42 42" className="flex-shrink-0">
+                {/* Track */}
+                <circle cx="21" cy="21" r={RING_R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+                {/* Progress */}
+                <circle
+                  cx="21" cy="21" r={RING_R}
+                  fill="none"
+                  stroke={ringColor}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={RING_CIRC}
+                  strokeDashoffset={RING_CIRC * (1 - ringProgress)}
+                  transform="rotate(-90 21 21)"
+                  style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s ease' }}
+                />
+                {/* Timer text inside ring */}
+                <text x="21" y="25" textAnchor="middle" fontSize="8" fill="white" fontFamily="monospace" fontWeight="bold">
+                  {formatTime(elapsedTime)}
+                </text>
+              </svg>
+              {medalEmoji && <span className="text-base">{medalEmoji}</span>}
+            </div>
+          ) : (
+            <div className={`text-lg sm:text-2xl font-bold font-mono ${elapsedTime > 60 ? 'text-orange-400' : 'text-white/90'}`}>
+              {formatTime(elapsedTime)}
+            </div>
+          )}
           <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Time</div>
         </div>
 
@@ -158,7 +270,26 @@ export default function GameBoard() {
           </div>
           <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Pairs</div>
         </div>
+
+        {/* Mistakes */}
+        <div
+          className="rounded-xl p-2 sm:p-3 text-center border"
+          style={{
+            backgroundColor: mismatches > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.06)',
+            borderColor: mismatches > 0 ? 'rgba(239,68,68,0.35)' : 'var(--theme-border)',
+          }}
+        >
+          <div className={`text-lg sm:text-2xl font-bold ${mismatches > 0 ? 'text-red-400' : 'text-white/60'}`}>
+            {mismatches}
+          </div>
+          <div className="text-[10px] sm:text-xs flex items-center justify-center gap-0.5" style={{ color: 'var(--theme-muted)' }}>
+            <span>❌</span><span>Mistakes</span>
+          </div>
+        </div>
       </div>
+
+      {/* Combo display */}
+      <ComboDisplay combo={combo} />
 
       {/* Progress bar */}
       <div className="mb-3 rounded-full h-1.5 sm:h-2 overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>

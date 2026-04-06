@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { useGameStore } from '../store/gameStore';
-import { calculateStars, calculateGrade, GAME_CONFIGS } from '../types';
+import { calculateStars, calculateGrade, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getTimeMedal } from '../types';
 import { hapticNotification } from '../telegram/telegram';
 import { isScoreEligibleForNFT } from '../cartridge/config';
 import { fetchPlayerStats } from '../lib/api';
+import { loadGhostReplay } from '../store/ghostReplay';
+import MedalBadge from './MedalBadge';
 
 interface WinModalProps {
   onClose: () => void;
+  onShowGhostReplay?: () => void; // optional — offered if ghost replay exists
 }
 
 const GRADE_STYLES: Record<string, string> = {
@@ -18,7 +21,7 @@ const GRADE_STYLES: Record<string, string> = {
   C: 'from-slate-400 to-slate-600 text-white',
 };
 
-export default function WinModal({ onClose }: WinModalProps) {
+export default function WinModal({ onClose, onShowGhostReplay }: WinModalProps) {
   const {
     currentGame,
     isWalletConnected,
@@ -30,6 +33,11 @@ export default function WinModal({ onClose }: WinModalProps) {
     telegramUser,
     playerName,
     theme,
+    currentEra,
+    currentLevel,
+    streak,
+    levelProgress,
+    newlyUnlockedAchievements,
   } = useGameStore();
 
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
@@ -68,6 +76,43 @@ export default function WinModal({ onClose }: WinModalProps) {
   const diffLabel =
     currentGame.difficulty === 1 ? '🏺 Ancient Era' :
     currentGame.difficulty === 2 ? '⚔️ Medieval Times' : '🚀 Modern Era';
+
+  // ── Level mode extras ─────────────────────────────────────────────────────
+  const levelConfig = currentEra !== null
+    ? ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1] ?? null
+    : null;
+
+  const timeMedal = levelConfig ? getTimeMedal(elapsedTime, levelConfig) : null;
+
+  // Ghost replay availability
+  const ghostReplay = currentEra !== null
+    ? loadGhostReplay(currentEra, currentLevel)
+    : null;
+
+  // Next level info
+  const nextLevelConfig = levelConfig && currentLevel < 5
+    ? ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel] ?? null
+    : null;
+
+  // Era completion check: just completed level 3 of an era
+  const justCompletedEraLevel3 =
+    levelConfig !== null &&
+    currentLevel === 3 &&
+    levelProgress.some(
+      (lp) => lp.era === currentEra && lp.level === 3 && lp.completed
+    );
+
+  const nextEraLabel =
+    currentGame.difficulty === 1 ? '⚔️ Medieval Times' :
+    currentGame.difficulty === 2 ? '🚀 Modern Era' : null;
+
+  // ── Streak display ────────────────────────────────────────────────────────
+  const streakMessage =
+    streak.currentStreak >= 2
+      ? `🔥 ${streak.currentStreak}-day streak! Keep it up!`
+      : streak.currentStreak === 1
+      ? 'Streak started! Come back tomorrow!'
+      : null;
 
   const themeAccent = {
     museum: { btn: 'from-amber-500 to-amber-700 hover:from-amber-400', label: 'text-amber-400', badge: 'bg-amber-500/20 border-amber-500/30 text-amber-300' },
@@ -200,6 +245,26 @@ export default function WinModal({ onClose }: WinModalProps) {
                 ))}
               </div>
 
+              {/* Medal display (level mode only) */}
+              {levelConfig && timeMedal && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.55 }}
+                  className="flex items-center justify-center gap-2"
+                >
+                  <MedalBadge medal={timeMedal} />
+                  <span className="text-white/70 text-sm">
+                    ⏱️ {formatTime(elapsedTime)}
+                    {timeMedal !== 'none' && (
+                      <span className="ml-1 font-bold text-white">
+                        · {timeMedal.charAt(0).toUpperCase() + timeMedal.slice(1)}!
+                      </span>
+                    )}
+                  </span>
+                </motion.div>
+              )}
+
               {/* Grade + Score row */}
               <div className="flex items-center gap-3">
                 <motion.div
@@ -215,6 +280,12 @@ export default function WinModal({ onClose }: WinModalProps) {
                     {currentGame.score.toLocaleString()}
                   </div>
                   <div className="text-white/40 text-xs">points scored</div>
+                  {/* Streak multiplier bonus applied */}
+                  {streak.multiplierBonus > 0 && (
+                    <div className="text-orange-400 text-[10px] mt-0.5">
+                      +{Math.round(streak.multiplierBonus * 100)}% score bonus applied
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -232,6 +303,66 @@ export default function WinModal({ onClose }: WinModalProps) {
                   </div>
                 ))}
               </div>
+
+              {/* Streak info */}
+              {streakMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 }}
+                  className="flex items-center gap-2 px-4 py-3 bg-orange-500/10 border border-orange-500/25 rounded-xl"
+                >
+                  <span className="text-xl flex-shrink-0">🔥</span>
+                  <p className="text-sm font-medium text-orange-300">{streakMessage}</p>
+                </motion.div>
+              )}
+
+              {/* Achievement unlocks */}
+              {newlyUnlockedAchievements.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.65 }}
+                  className="px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-2"
+                >
+                  <p className="text-sm font-bold text-amber-300">🏆 New Achievements!</p>
+                  <ul className="space-y-1">
+                    {newlyUnlockedAchievements.map((ach) => (
+                      <li key={ach.id} className="flex items-center gap-2 text-xs text-white/80">
+                        <span className="text-base">{ach.icon}</span>
+                        <span className="font-semibold">{ach.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              )}
+
+              {/* Level progression */}
+              {levelConfig && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.7 }}
+                  className="space-y-1.5"
+                >
+                  {nextLevelConfig && (
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-white/5 rounded-xl text-sm">
+                      <span>⬆️</span>
+                      <span className="text-white/70">
+                        Next Level: <span className="font-bold text-white">{nextLevelConfig.label}</span>
+                      </span>
+                    </div>
+                  )}
+                  {justCompletedEraLevel3 && nextEraLabel && (
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-sm">
+                      <span>🔓</span>
+                      <span className="text-emerald-300 font-medium">
+                        Era Complete! {nextEraLabel} unlocked!
+                      </span>
+                    </div>
+                  )}
+                </motion.div>
+              )}
 
               {/* Hall of Fame banner */}
               {scoreSubmitted && (
@@ -311,6 +442,21 @@ export default function WinModal({ onClose }: WinModalProps) {
                     </button>
                   )}
                 </div>
+              )}
+
+              {/* Ghost replay offer */}
+              {ghostReplay && onShowGhostReplay && (
+                <motion.button
+                  onClick={onShowGhostReplay}
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl text-sm font-medium text-white/70 hover:text-white/90 transition-all flex items-center justify-center gap-2"
+                  whileTap={{ scale: 0.97 }}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.75 }}
+                >
+                  <span>👻</span>
+                  <span>Watch Best Run</span>
+                </motion.button>
               )}
 
               {/* Actions */}

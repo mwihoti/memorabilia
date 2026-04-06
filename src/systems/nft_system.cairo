@@ -1,124 +1,93 @@
+// NFT System — Dojo 1.8.0
+// Mints on-chain score achievement NFTs (score >= 10_000 raw points).
 use starknet::ContractAddress;
-use dojo::world::{IWorldDispatcher, IWorldDispatcherTrait};
+use memorabilia::models::score_nft::{ScoreNFT, ScoreNFTTrait, NFTCounter, NFTCounterTrait};
 
-/// NFT System for minting score-based NFTs
-#[dojo::interface]
-trait INFTSystem {
-    fn mint_score_nft(
-        ref world: IWorldDispatcher,
-        recipient: ContractAddress,
-        score: u256,
-        timestamp: u64,
-        game_id: u32,
-        difficulty: u8
-    ) -> u256;
-    
-    fn get_nft(
-        world: @IWorldDispatcher,
-        token_id: u256
-    ) -> (ContractAddress, u256, u64, u32, u8);
-    
-    fn get_total_minted(world: @IWorldDispatcher) -> u256;
+// ── Events ────────────────────────────────────────────────────────────────────
+
+#[derive(Drop, Serde)]
+#[dojo::event]
+pub struct NFTMinted {
+    #[key]
+    pub token_id: u32,
+    pub recipient: ContractAddress,
+    pub score: u32,
+    pub game_id: u32,
+    pub difficulty: u8,
+    pub timestamp: u64,
 }
 
-#[dojo::contract]
-mod nft_system {
-    use super::INFTSystem;
-    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
-    use memorabilia::models::score_nft::{ScoreNFT, ScoreNFTTrait, NFTCounter, NFTCounterTrait, NFTMetadata};
+// ── Interface ─────────────────────────────────────────────────────────────────
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        NFTMinted: NFTMinted,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct NFTMinted {
-        token_id: u256,
+#[starknet::interface]
+pub trait INFTSystem<T> {
+    fn mint_score_nft(
+        ref self: T,
         recipient: ContractAddress,
-        score: u256,
+        score: u32,
         timestamp: u64,
         game_id: u32,
         difficulty: u8,
-    }
+    ) -> u32;
+
+    fn get_nft(self: @T, token_id: u32) -> ScoreNFT;
+
+    fn get_total_minted(self: @T) -> u32;
+}
+
+// ── Contract ──────────────────────────────────────────────────────────────────
+
+#[dojo::contract]
+pub mod nft_system {
+    use super::{ScoreNFT, ScoreNFTTrait, NFTCounter, NFTCounterTrait, NFTMinted, INFTSystem};
+    use starknet::{ContractAddress, get_block_timestamp};
+    use dojo::model::ModelStorage;
+    use dojo::event::EventStorage;
 
     #[abi(embed_v0)]
     impl NFTSystemImpl of INFTSystem<ContractState> {
-        /// Mint an NFT for a high score (score >= 10)
         fn mint_score_nft(
-            ref world: IWorldDispatcher,
+            ref self: ContractState,
             recipient: ContractAddress,
-            score: u256,
+            score: u32,
             timestamp: u64,
             game_id: u32,
-            difficulty: u8
-        ) -> u256 {
-            // Validate score eligibility
+            difficulty: u8,
+        ) -> u32 {
+            let mut world = self.world_default();
+
             assert(ScoreNFTTrait::is_eligible(score), 'Score too low for NFT');
-            
-            // Validate recipient
             assert(!recipient.is_zero(), 'Invalid recipient');
-            
-            // Get or create counter
-            let mut counter = get!(world, 0, (NFTCounter));
-            if counter.total_minted == 0 {
-                counter = NFTCounterTrait::new();
-            }
-            
-            // Increment counter to get new token ID
+
+            // Singleton counter — keyed on id=0
+            let mut counter: NFTCounter = world.read_model(0_u8);
             let token_id = counter.increment();
-            
-            // Create NFT
-            let nft = ScoreNFTTrait::new(
+            world.write_model(@counter);
+
+            let nft = ScoreNFTTrait::new(token_id, recipient, score, timestamp, game_id, difficulty);
+            world.write_model(@nft);
+
+            world.emit_event(@NFTMinted {
                 token_id,
                 recipient,
                 score,
-                timestamp,
-                game_id,
-                difficulty
-            );
-            
-            // Save NFT and counter
-            set!(world, (nft));
-            set!(world, (counter));
-            
-            // Create metadata
-            let metadata = NFTMetadata {
-                token_id,
-                name: 'Memorabilia Score NFT',
-                description: 'High Score Achievement',
-                image_uri: 'ipfs://...',
-            };
-            set!(world, (metadata));
-            
-            // Emit event
-            emit!(world, NFTMinted {
-                token_id,
-                recipient,
-                score,
-                timestamp,
                 game_id,
                 difficulty,
+                timestamp,
             });
-            
+
             token_id
         }
-        
-        /// Get NFT data
-        fn get_nft(
-            world: @IWorldDispatcher,
-            token_id: u256
-        ) -> (ContractAddress, u256, u64, u32, u8) {
-            let nft = get!(world, token_id, (ScoreNFT));
-            (nft.recipient, nft.score, nft.timestamp, nft.game_id, nft.difficulty)
+
+        fn get_nft(self: @ContractState, token_id: u32) -> ScoreNFT {
+            let world = self.world_default();
+            world.read_model(token_id)
         }
-        
-        /// Get total NFTs minted
-        fn get_total_minted(world: @IWorldDispatcher) -> u256 {
-            let counter = get!(world, 0, (NFTCounter));
+
+        fn get_total_minted(self: @ContractState) -> u32 {
+            let world = self.world_default();
+            let counter: NFTCounter = world.read_model(0_u8);
             counter.total_minted
         }
     }
 }
-
