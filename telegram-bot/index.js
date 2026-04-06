@@ -14,7 +14,15 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Escape HTML special chars
+function h(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 async function getLiveLeaderboard(limit = 5) {
   try {
@@ -24,24 +32,18 @@ async function getLiveLeaderboard(limit = 5) {
   } catch { return null; }
 }
 
-// Escape special chars for MarkdownV2
-function esc(text) {
-  return String(text).replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-}
-
-// Format live leaderboard text (MarkdownV2)
 async function buildLeaderboardText() {
   const data = await getLiveLeaderboard();
   const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
   if (!data?.entries?.length) {
-    return '🏆 *Hall of Fame*\n\nNo scores yet\\! Be the first to play 🎮';
+    return '🏆 <b>Hall of Fame</b>\n\nNo scores yet! Be the first to play 🎮';
   }
-  let text = '🏆 *Hall of Fame — Top 5*\n\n';
+  let text = '🏆 <b>Hall of Fame — Top 5</b>\n\n';
   data.entries.forEach((e, i) => {
-    text += `${medals[i]} ${esc(e.display_name)} — \`${e.best_score.toLocaleString()}\` pts\n`;
-    text += `   _${e.total_games} game${e.total_games !== 1 ? 's' : ''} · ${esc(e.difficulty || 'Mixed')}_\n\n`;
+    text += `${medals[i]} <b>${h(e.display_name)}</b> — <code>${Number(e.best_score).toLocaleString()}</code> pts\n`;
+    text += `   <i>${e.total_games} game${e.total_games !== 1 ? 's' : ''}</i>\n\n`;
   });
-  text += `_${esc(data.total)} players competing worldwide_ 🌍`;
+  text += `<i>${h(data.total)} players competing worldwide 🌍</i>`;
   return text;
 }
 
@@ -51,10 +53,13 @@ const KB_MAIN = {
   inline_keyboard: [
     [{ text: '🎮  Play Now', web_app: { url: WEB_APP_URL } }],
     [
-      { text: '📖 How It Works', callback_data: 'onboard:how' },
-      { text: '🏆 Top Players',  callback_data: 'onboard:lb' },
+      { text: '📖 How It Works', callback_data: 'how' },
+      { text: '🏆 Top Players',  callback_data: 'lb'  },
     ],
-    [{ text: '🌍 About Memorabilia', callback_data: 'onboard:about' }],
+    [
+      { text: '🎨 Themes',       callback_data: 'themes' },
+      { text: '🌍 About',        callback_data: 'about'  },
+    ],
   ],
 };
 
@@ -63,261 +68,239 @@ const KB_THEME_PICK = {
     [
       { text: '🏛️ Museum',  callback_data: 'theme:museum' },
       { text: '🌿 Nature',  callback_data: 'theme:nature' },
-      { text: '🎨 Urban',   callback_data: 'theme:urban' },
+      { text: '🎨 Urban',   callback_data: 'theme:urban'  },
     ],
-    [{ text: '« Back', callback_data: 'onboard:main' }],
+    [{ text: '« Back to Menu', callback_data: 'main' }],
   ],
 };
 
 const KB_PLAY = {
   inline_keyboard: [
     [{ text: '🎮  Enter the Game', web_app: { url: WEB_APP_URL } }],
-    [{ text: '« Main Menu', callback_data: 'onboard:main' }],
+    [{ text: '« Back to Menu', callback_data: 'main' }],
   ],
 };
 
-const KB_LB = (hasEntries) => ({
+const KB_BACK = {
   inline_keyboard: [
-    [{ text: '🎮  Play & Climb the Ranks', web_app: { url: WEB_APP_URL } }],
-    ...(hasEntries ? [] : []),
-    [{ text: '« Main Menu', callback_data: 'onboard:main' }],
+    [{ text: '🎮  Play Now', web_app: { url: WEB_APP_URL } }],
+    [{ text: '« Back to Menu', callback_data: 'main' }],
   ],
-});
+};
 
 // ── /start ────────────────────────────────────────────────────────────────────
 
 bot.start(async (ctx) => {
-  const name = ctx.from?.first_name || 'Explorer';
-  const ref = ctx.startPayload; // deep link param e.g. /start=theme_urban
+  const name = h(ctx.from?.first_name || 'Explorer');
+  const ref  = ctx.startPayload || '';
 
-  // Handle deep links
-  if (ref === 'theme_museum' || ref === 'theme_nature' || ref === 'theme_urban') {
-    const t = ref.replace('theme_', '');
-    return sendThemeDetails(ctx, t);
+  if (ref.startsWith('theme_')) {
+    return replyTheme(ctx, ref.replace('theme_', ''));
   }
 
-  await ctx.reply(
-    `🏛️ *Hey ${esc(name)}\\! Welcome to Memorabilia\\!*\n\n` +
-    `I'm your guide to the on\\-chain memory card game built on Starknet\\.  ` +
-    `Flip cards, find matching pairs, and chase the top of the *Hall of Fame*\\!\n\n` +
-    `What would you like to do? 👇`,
-    { parse_mode: 'MarkdownV2', reply_markup: KB_MAIN }
+  return ctx.reply(
+    `🏛️ <b>Hey ${name}! Welcome to Memorabilia!</b>\n\n` +
+    `I'm your guide to the on-chain memory card game built on Starknet.\n\n` +
+    `Flip cards, find matching pairs, and climb the <b>Hall of Fame</b>!\n\n` +
+    `👇 What would you like to do?`,
+    { parse_mode: 'HTML', reply_markup: KB_MAIN }
   );
 });
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 bot.command('play', (ctx) => ctx.reply(
-  '🚀 *Let\'s go\\!*\n\nTap below to launch the game\\.',
-  { parse_mode: 'MarkdownV2', reply_markup: KB_PLAY }
+  '🚀 <b>Let\'s go!</b>\n\nTap the button below to launch the game.',
+  { parse_mode: 'HTML', reply_markup: KB_PLAY }
 ));
 
 bot.command('help', (ctx) => ctx.reply(
-  '📖 *How to Play Memorabilia*\n\n' +
-  '1️⃣ *Choose difficulty* — 3 eras await you\\:\n' +
+  '📖 <b>How to Play Memorabilia</b>\n\n' +
+  '1️⃣ <b>Choose your era:</b>\n' +
   '   🏺 Ancient Era — 12 cards, 6 pairs\n' +
   '   ⚔️ Medieval Times — 20 cards, 10 pairs\n' +
   '   🚀 Modern Era — 30 cards, 15 pairs\n\n' +
-  '2️⃣ *Preview phase* — Study the cards for 3 seconds\\.\n\n' +
-  '3️⃣ *Flip & match* — Tap two cards\\. If they match, they stay face\\-up\\.\n\n' +
-  '4️⃣ *Scoring* — Fewer moves = higher score\\. Get ⭐⭐⭐ for perfection\\!\n\n' +
-  '💡 _Tip: You can earn stars and an S\\-rank in fewer than the optimal moves\\._',
-  { parse_mode: 'MarkdownV2', reply_markup: KB_PLAY }
+  '2️⃣ <b>Preview phase</b> — Study all cards for 3 seconds.\n\n' +
+  '3️⃣ <b>Flip &amp; match</b> — Tap two cards. If they match, they stay open!\n\n' +
+  '4️⃣ <b>Scoring</b> — Fewer moves = higher score. Get ⭐⭐⭐ for perfection!\n\n' +
+  '<i>Tip: Pay close attention during the preview — it\'s your only chance to memorise the board!</i>',
+  { parse_mode: 'HTML', reply_markup: KB_PLAY }
 ));
 
 bot.command('leaderboard', async (ctx) => {
   const text = await buildLeaderboardText();
-  const data = await getLiveLeaderboard();
-  return ctx.reply(text, {
-    parse_mode: 'MarkdownV2',
-    reply_markup: KB_LB(!!data?.entries?.length),
-  });
+  return ctx.reply(text, { parse_mode: 'HTML', reply_markup: KB_BACK });
 });
 
-bot.command('about', (ctx) => ctx.reply(
-  '🏛️ *About Memorabilia*\n\n' +
-  'An on\\-chain memory card game where every move is recorded on *Starknet*\\.\n\n' +
-  '⚡ *Dojo Engine* — Provable game logic\n' +
-  '🔷 *Starknet* — Layer 2 blockchain\n' +
-  '🎨 *3 Visual Themes* — Museum, Nature, Urban\n' +
-  '📊 *Real leaderboard* — Powered by Neon PostgreSQL\n' +
-  '📱 *Telegram Mini App* — Plays directly inside Telegram\n\n' +
-  'Built during a game jam by a 6\\-person team\\ 🚀',
-  { parse_mode: 'MarkdownV2', reply_markup: KB_PLAY }
-));
-
 bot.command('themes', (ctx) => ctx.reply(
-  '🎨 *Choose Your Visual Theme*\n\n' +
-  '🏛️ *Museum* — Golden amber tones, ornamental card backs, classical artifacts\n' +
-  '🌿 *Nature* — Deep forest greens, leaf patterns, earthen textures\n' +
-  '🎨 *Urban* — Neon graffiti, spray\\-paint cards, electric glow effects\n\n' +
+  '🎨 <b>Choose Your Visual Theme</b>\n\n' +
+  '🏛️ <b>Museum</b> — Golden amber tones, ornamental card backs, classical artifacts\n\n' +
+  '🌿 <b>Nature</b> — Deep forest greens, leaf patterns, earthen textures\n\n' +
+  '🎨 <b>Urban</b> — Neon graffiti, spray-paint cards, electric glow effects\n\n' +
   'Tap one to learn more 👇',
-  { parse_mode: 'MarkdownV2', reply_markup: KB_THEME_PICK }
+  { parse_mode: 'HTML', reply_markup: KB_THEME_PICK }
 ));
 
-// ── Theme detail sender ───────────────────────────────────────────────────────
+bot.command('about', (ctx) => ctx.reply(
+  '🏛️ <b>About Memorabilia</b>\n\n' +
+  'An on-chain memory card game where every move is recorded on <b>Starknet</b>.\n\n' +
+  '⚡ <b>Dojo Engine</b> — Provable game logic\n' +
+  '🔷 <b>Starknet</b> — Layer 2 blockchain\n' +
+  '🎨 <b>3 Visual Themes</b> — Museum, Nature, Urban\n' +
+  '📊 <b>Live leaderboard</b> — Powered by Neon PostgreSQL\n' +
+  '📱 <b>Telegram Mini App</b> — No install needed\n\n' +
+  '🚀 Built by a 6-person team for Starknet Game Jam',
+  { parse_mode: 'HTML', reply_markup: KB_PLAY }
+));
 
-async function sendThemeDetails(ctx, theme) {
+// ── Theme reply helper ────────────────────────────────────────────────────────
+
+async function replyTheme(ctx, theme) {
   const details = {
     museum: {
-      icon: '🏛️',
-      name: 'The Museum',
-      desc:
-        'Step into the golden halls of history\\!\n\n' +
+      icon: '🏛️', name: 'The Museum',
+      text:
         '✨ Ornamental amber card backs with classical patterns\n' +
-        '🏺 Artifacts from Ancient, Medieval & Modern eras\n' +
-        '🥇 Hall of Fame leaderboard in gold & bronze\n\n' +
-        '_Perfect for fans of history and elegance\\._',
+        '🏺 Artifacts from Ancient, Medieval &amp; Modern eras\n' +
+        '🥇 Hall of Fame leaderboard in gold &amp; bronze\n\n' +
+        '<i>Perfect for fans of history and elegance.</i>',
     },
     nature: {
-      icon: '🌿',
-      name: 'Nature Trails',
-      desc:
-        'Venture into the living forest\\!\n\n' +
-        '🍃 Leaf\\-pattern card backs in deep forest green\n' +
-        '🦋 Nature\\-themed emoji artifacts across all eras\n' +
+      icon: '🌿', name: 'Nature Trails',
+      text:
+        '🍃 Leaf-pattern card backs in deep forest green\n' +
+        '🦋 Nature-themed emoji artifacts across all eras\n' +
         '🌲 Earthy textures and soft glow effects\n\n' +
-        '_Perfect for those who love the outdoors\\._',
+        '<i>Perfect for those who love the outdoors.</i>',
     },
     urban: {
-      icon: '🎨',
-      name: 'Urban Gallery',
-      desc:
-        'Hit the neon\\-lit streets\\!\n\n' +
-        '💥 Spray\\-paint card backs with neon \\#00ff88 glow\n' +
-        '🏙️ Graffiti typography and electric color pops\n' +
-        '⚡ Scanline overlay and pink\\+cyan accent effects\n\n' +
-        '_Perfect for fans of street art and urban culture\\._',
+      icon: '🎨', name: 'Urban Gallery',
+      text:
+        '💥 Spray-paint card backs with neon green glow\n' +
+        '🏙️ Graffiti typography and electric colour pops\n' +
+        '⚡ Scanline overlay and pink + cyan accent effects\n\n' +
+        '<i>Perfect for fans of street art and urban culture.</i>',
     },
   };
   const t = details[theme] || details.museum;
-  await ctx.reply(
-    `${t.icon} *${esc(t.name)}*\n\n${t.desc}\n\n` +
-    `Ready to jump in? The theme is selected inside the game 👇`,
-    { parse_mode: 'MarkdownV2', reply_markup: KB_PLAY }
-  );
+  const msg =
+    `${t.icon} <b>${t.name}</b>\n\n` +
+    `${t.text}\n\n` +
+    `Ready to play? The theme is selected inside the game 👇`;
+
+  if (ctx.callbackQuery) {
+    return ctx.editMessageText(msg, { parse_mode: 'HTML', reply_markup: KB_PLAY });
+  }
+  return ctx.reply(msg, { parse_mode: 'HTML', reply_markup: KB_PLAY });
 }
 
 // ── Callback queries ──────────────────────────────────────────────────────────
 
 bot.on('callback_query', async (ctx) => {
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => {});
   const data = ctx.callbackQuery?.data;
   if (!data) return;
 
-  // Main menu
-  if (data === 'onboard:main') {
-    const name = ctx.from?.first_name || 'Explorer';
+  // Back to main menu
+  if (data === 'main') {
+    const name = h(ctx.from?.first_name || 'Explorer');
     return ctx.editMessageText(
-      `🏛️ *Memorabilia — Main Menu*\n\nHey ${esc(name)}\\! What would you like to do?`,
-      { parse_mode: 'MarkdownV2', reply_markup: KB_MAIN }
+      `🏛️ <b>Memorabilia — Main Menu</b>\n\nHey ${name}! What would you like to do?`,
+      { parse_mode: 'HTML', reply_markup: KB_MAIN }
     );
   }
 
-  // How it works → show steps + theme picker
-  if (data === 'onboard:how') {
+  // How it works
+  if (data === 'how') {
     return ctx.editMessageText(
-      '📖 *How Memorabilia Works*\n\n' +
-      '🃏 A grid of face\\-down cards is revealed for *3 seconds*\\.  ' +
-      'After the preview, they flip back\\.\n\n' +
-      '👆 *Tap two cards* to reveal them\\.  ' +
-      'If they match, they stay open\\!  ' +
-      'If not, they flip back — remember where you saw them\\.\n\n' +
-      '🏆 *Match all pairs* to complete the exhibition and earn a score based on moves and speed\\.\n\n' +
-      '🎨 Pick a visual theme that suits your style 👇',
-      { parse_mode: 'MarkdownV2', reply_markup: KB_THEME_PICK }
+      '📖 <b>How Memorabilia Works</b>\n\n' +
+      '🃏 A grid of face-down cards is shown for <b>3 seconds</b> — study them carefully!\n\n' +
+      '👆 <b>Tap two cards</b> to flip them over. If they match, they stay open. If not, they flip back — you need to remember where each one was!\n\n' +
+      '🏆 <b>Match all pairs</b> to finish. Fewer moves and faster time = higher score and more ⭐.\n\n' +
+      '🎨 There are 3 visual themes to play in — pick the one you like 👇',
+      { parse_mode: 'HTML', reply_markup: KB_THEME_PICK }
     );
   }
 
   // Live leaderboard
-  if (data === 'onboard:lb') {
+  if (data === 'lb') {
     const text = await buildLeaderboardText();
-    const data2 = await getLiveLeaderboard();
-    return ctx.editMessageText(text, {
-      parse_mode: 'MarkdownV2',
-      reply_markup: KB_LB(!!data2?.entries?.length),
-    });
+    return ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: KB_BACK });
   }
 
-  // About
-  if (data === 'onboard:about') {
+  // Themes picker
+  if (data === 'themes') {
     return ctx.editMessageText(
-      '🏛️ *About Memorabilia*\n\n' +
-      'An on\\-chain memory card game where every move is recorded on *Starknet*\\.\n\n' +
-      '⚡ *Dojo Engine* — Provable game logic\n' +
-      '🔷 *Starknet* — Layer 2 blockchain\n' +
-      '🎨 *3 Visual Themes* — Museum, Nature, Urban\n' +
-      '📊 *Live leaderboard* — Powered by Neon PostgreSQL\n' +
-      '📱 *Telegram Mini App* — No install needed\n\n' +
-      '🚀 Built by a 6\\-person team for Starknet Game Jam',
-      { parse_mode: 'MarkdownV2', reply_markup: KB_PLAY }
+      '🎨 <b>Visual Themes</b>\n\n' +
+      '🏛️ <b>Museum</b> — Golden amber tones &amp; classical artifacts\n' +
+      '🌿 <b>Nature</b> — Forest greens &amp; leaf patterns\n' +
+      '🎨 <b>Urban</b> — Neon graffiti &amp; spray-paint effects\n\n' +
+      'Tap one to learn more 👇',
+      { parse_mode: 'HTML', reply_markup: KB_THEME_PICK }
     );
   }
 
-  // Theme picker
-  if (data?.startsWith('theme:')) {
-    const theme = data.replace('theme:', '');
-    return sendThemeDetails(ctx, theme);
+  // About
+  if (data === 'about') {
+    return ctx.editMessageText(
+      '🏛️ <b>About Memorabilia</b>\n\n' +
+      'An on-chain memory card game built on <b>Starknet</b>.\n\n' +
+      '⚡ <b>Dojo Engine</b> — Provable game logic\n' +
+      '🔷 <b>Starknet</b> — Layer 2 blockchain\n' +
+      '🎨 <b>3 Visual Themes</b> — Museum, Nature, Urban\n' +
+      '📊 <b>Live leaderboard</b> — Neon PostgreSQL\n' +
+      '📱 <b>Telegram Mini App</b> — No install needed\n\n' +
+      '🚀 Built by a 6-person team for Starknet Game Jam',
+      { parse_mode: 'HTML', reply_markup: KB_PLAY }
+    );
+  }
+
+  // Theme detail pages
+  if (data.startsWith('theme:')) {
+    return replyTheme(ctx, data.replace('theme:', ''));
   }
 });
 
 // ── Free-text fallback ────────────────────────────────────────────────────────
 
-const KEYWORDS_PLAY   = ['play', 'game', 'start', 'begin', 'launch', 'open'];
-const KEYWORDS_LB     = ['leaderboard', 'ranking', 'rank', 'top', 'score', 'high score'];
-const KEYWORDS_HELP   = ['help', 'how', 'rules', 'guide', 'tutorial', 'instructions'];
-const KEYWORDS_ABOUT  = ['about', 'what is', 'starknet', 'dojo', 'blockchain', 'nft'];
-const KEYWORDS_THEMES = ['theme', 'museum', 'nature', 'urban', 'graffiti', 'skin'];
-
 bot.on('text', async (ctx) => {
   if (ctx.message.text.startsWith('/')) return;
   const t = ctx.message.text.toLowerCase();
 
-  if (KEYWORDS_PLAY.some(k => t.includes(k))) {
-    return ctx.reply('🎮 Tap below to play\\!', { parse_mode: 'MarkdownV2', reply_markup: KB_PLAY });
+  if (['play', 'game', 'start', 'begin', 'launch', 'open'].some(k => t.includes(k))) {
+    return ctx.reply('🎮 Tap below to play!', { reply_markup: KB_PLAY });
   }
-  if (KEYWORDS_LB.some(k => t.includes(k))) {
+  if (['leaderboard', 'ranking', 'top', 'score', 'high score'].some(k => t.includes(k))) {
     const text = await buildLeaderboardText();
-    const data = await getLiveLeaderboard();
-    return ctx.reply(text, { parse_mode: 'MarkdownV2', reply_markup: KB_LB(!!data?.entries?.length) });
+    return ctx.reply(text, { parse_mode: 'HTML', reply_markup: KB_BACK });
   }
-  if (KEYWORDS_HELP.some(k => t.includes(k))) {
-    return ctx.reply(
-      '📖 Use /help to see the full guide, or tap one of the options below 👇',
-      { reply_markup: KB_MAIN }
-    );
+  if (['help', 'how', 'rules', 'guide', 'instructions'].some(k => t.includes(k))) {
+    return ctx.reply('📖 Use /help for the full guide, or pick an option below 👇', { reply_markup: KB_MAIN });
   }
-  if (KEYWORDS_ABOUT.some(k => t.includes(k))) {
-    return ctx.reply(
-      '🏛️ Memorabilia is an on\\-chain memory game on Starknet\\.  Use /about for more info\\.',
-      { parse_mode: 'MarkdownV2', reply_markup: KB_MAIN }
-    );
+  if (['theme', 'museum', 'nature', 'urban', 'graffiti'].some(k => t.includes(k))) {
+    return ctx.reply('🎨 Pick a theme 👇', { reply_markup: KB_THEME_PICK });
   }
-  if (KEYWORDS_THEMES.some(k => t.includes(k))) {
-    return ctx.reply(
-      '🎨 Tap a theme to learn more 👇',
-      { reply_markup: KB_THEME_PICK }
-    );
+  if (['about', 'starknet', 'dojo', 'blockchain'].some(k => t.includes(k))) {
+    return ctx.reply('Use /about for the full story 👇', { reply_markup: KB_MAIN });
   }
 
-  // Default
-  const name = ctx.from?.first_name || 'Explorer';
+  const name = h(ctx.from?.first_name || 'Explorer');
   return ctx.reply(
-    `👋 Hi ${esc(name)}\\!  I'm the Memorabilia bot\\.\n\n` +
-    'Try one of these:\n' +
+    `👋 Hi ${name}! I'm the Memorabilia bot.\n\n` +
+    'Commands:\n' +
     '/play — Launch the game\n' +
     '/help — How to play\n' +
     '/leaderboard — Top scores\n' +
     '/themes — Visual themes\n' +
     '/about — About the project',
-    { parse_mode: 'MarkdownV2', reply_markup: KB_MAIN }
+    { parse_mode: 'HTML', reply_markup: KB_MAIN }
   );
 });
 
 // ── Error handling ────────────────────────────────────────────────────────────
 
 bot.catch((err, ctx) => {
-  console.error('❌ Bot error:', err);
+  console.error('Bot error:', err?.message || err);
   try { ctx.reply('⚠️ Something went wrong. Please try again!'); } catch {}
 });
 
