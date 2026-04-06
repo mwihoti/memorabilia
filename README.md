@@ -329,6 +329,49 @@ Frontend is deployed automatically to Vercel on every push to `main`.
 
 ---
 
+## Cryptographic Foundations
+
+Memorabilia's on-chain logic — key generation, transaction signing, account abstraction — is built on the same cryptographic primitives documented in the companion learning repository:
+
+**[bitcoin_dojo-btcdeveloper](https://github.com/mwihoti/bitcoin_dojo-btcdeveloper)**
+
+> Bitcoin Dojo — Cryptography Fundamentals Track  
+> A hands-on implementation of elliptic curve cryptography from first principles, written in Rust.
+
+### What Was Built (Module by Module)
+
+| Module | Topic | What It Does |
+|--------|-------|-------------|
+| 1.1 | Hashing & Randomness | SHA-256 hashing and cryptographically secure random number generation |
+| 1.2 | Field Element | Arithmetic over a finite field — numbers mod a prime `p` |
+| 1.3 | Scalar | Arithmetic mod the curve order `n` — the space where private keys live |
+| 1.4 | Curve Point | Elliptic curve point addition and the double-and-add scalar multiplication algorithm |
+| 1.5 | Secp256k1 | The specific curve parameters used by Bitcoin (`p`, `n`, `G`) |
+| 1.6 | Keys | Private key and public key generation (`Q = d × G`) |
+| 1.7 | ECDSA | Elliptic Curve Digital Signature Algorithm — sign and verify messages |
+
+### Key Concepts Covered
+
+- Modular arithmetic and finite fields
+- Fermat's Little Theorem
+- Mathematical groups and elliptic curve structure
+- Point addition and the double-and-add algorithm
+- Public key cryptography (`Q = d × G`)
+- ECDSA sign and verify
+
+### How This Connects to Memorabilia
+
+The same cryptographic stack powers this game:
+
+- **Session keys** in `session_policy.cairo` are secp256k1 key pairs — a private scalar `d` and a public point `Q`
+- **Transaction signing** by the Cartridge Controller uses ECDSA over secp256k1 (the same curve implemented in the Bitcoin Dojo track)
+- **Account Abstraction** on Starknet validates signatures using the same verify logic — checking that a signature `(r, s)` was produced by the holder of a given public key
+- **Starknet's native curve** (STARK curve) shares the same mathematical group structure — field elements, scalars, and point multiplication — just with different parameters than secp256k1
+
+Understanding the cryptography from first principles (Bitcoin Dojo track) is what enabled building the account abstraction and session key system in this game with confidence.
+
+---
+
 ## Resources
 
 - [Dojo Book](https://book.dojoengine.org/)
@@ -336,6 +379,7 @@ Frontend is deployed automatically to Vercel on every push to `main`.
 - [Starknet Documentation](https://docs.starknet.io/)
 - [Telegram Mini Apps](https://core.telegram.org/bots/webapps)
 - [Cartridge Controller](https://docs.cartridge.gg/)
+- [Bitcoin Dojo — Crypto Fundamentals (Rust)](https://github.com/mwihoti/bitcoin_dojo-btcdeveloper)
 
 ---
 
