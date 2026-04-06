@@ -11,6 +11,7 @@ import MedalBadge from './MedalBadge';
 
 interface WinModalProps {
   onClose: () => void;
+  onNextLevel?: () => void;       // go directly to the next level
   onShowGhostReplay?: () => void; // optional — offered if ghost replay exists
 }
 
@@ -21,7 +22,7 @@ const GRADE_STYLES: Record<string, string> = {
   C: 'from-slate-400 to-slate-600 text-white',
 };
 
-export default function WinModal({ onClose, onShowGhostReplay }: WinModalProps) {
+export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: WinModalProps) {
   const {
     currentGame,
     isWalletConnected,
@@ -94,6 +95,10 @@ export default function WinModal({ onClose, onShowGhostReplay }: WinModalProps) 
     ? ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel] ?? null
     : null;
 
+  // Check if ALL 15 levels across all 3 eras are complete
+  const totalLevels = 15; // 3 eras × 5 levels
+  const allLevelsComplete = levelProgress.filter((lp) => lp.completed).length >= totalLevels;
+
   // Era completion check: just completed level 3 of an era
   const justCompletedEraLevel3 =
     levelConfig !== null &&
@@ -125,7 +130,7 @@ export default function WinModal({ onClose, onShowGhostReplay }: WinModalProps) 
     const shareText =
       `${starStr} I scored ${currentGame.score.toLocaleString()} pts on Memorabilia!\n` +
       `${diffLabel} · ${currentGame.moves} moves · ${formatTime(elapsedTime)}\n` +
-      `Play now 👉 https://t.me/memorabilia_game_bot`;
+      `Play now 👉 https://t.me/enter_memorabilia_musem_bot`;
 
     // Try native Web Share first (works in Telegram WebApp on mobile)
     if (navigator.share) {
@@ -136,7 +141,7 @@ export default function WinModal({ onClose, onShowGhostReplay }: WinModalProps) 
     }
 
     // Telegram forward link fallback
-    const tgUrl = `https://t.me/share/url?url=https://t.me/memorabilia_game_bot&text=${encodeURIComponent(shareText)}`;
+    const tgUrl = `https://t.me/share/url?url=https://t.me/enter_memorabilia_musem_bot&text=${encodeURIComponent(shareText)}`;
     const tg = (window as any).Telegram?.WebApp;
     if (tg?.openTelegramLink) {
       tg.openTelegramLink(tgUrl);
@@ -459,27 +464,59 @@ export default function WinModal({ onClose, onShowGhostReplay }: WinModalProps) 
                 </motion.button>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-3">
-                <motion.button
-                  onClick={onClose}
-                  className={`flex-1 py-3.5 bg-gradient-to-r ${themeAccent.btn} text-white font-bold rounded-xl text-sm transition-all shadow-lg`}
-                  whileTap={{ scale: 0.97 }}
+              {/* All levels complete banner */}
+              {allLevelsComplete && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.8, type: 'spring' }}
+                  className="px-4 py-4 bg-gradient-to-r from-amber-500/20 to-purple-500/20 border border-amber-500/40 rounded-2xl text-center space-y-2"
                 >
-                  New Exhibition
-                </motion.button>
+                  <div className="text-3xl">🎉</div>
+                  <p className="text-amber-300 font-extrabold text-base">You've Mastered All Levels!</p>
+                  <p className="text-white/60 text-xs">You completed all 15 levels across every era. More games are coming — stay tuned!</p>
+                  <p className="text-white/40 text-[10px] italic">🚀 New challenges coming soon…</p>
+                </motion.div>
+              )}
 
-                <motion.button
-                  onClick={handleShare}
-                  className="flex-1 py-3.5 bg-white/10 hover:bg-white/15 rounded-xl font-bold text-sm text-white/80 transition-all flex items-center justify-center gap-1.5"
-                  whileTap={{ scale: 0.97 }}
-                >
-                  {shareCopied ? (
-                    <><span>✅</span><span>Copied!</span></>
-                  ) : (
-                    <><span>📤</span><span>Share</span></>
-                  )}
-                </motion.button>
+              {/* Actions */}
+              <div className="space-y-2">
+                {/* Next Level button — shown if next level exists and not all levels done */}
+                {nextLevelConfig && onNextLevel && !allLevelsComplete && (
+                  <motion.button
+                    onClick={onNextLevel}
+                    className={`w-full py-3.5 bg-gradient-to-r ${themeAccent.btn} text-white font-bold rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2`}
+                    whileTap={{ scale: 0.97 }}
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.8 }}
+                  >
+                    <span>⬆️</span>
+                    <span>Next Level: {nextLevelConfig.label}</span>
+                  </motion.button>
+                )}
+
+                <div className="flex gap-3">
+                  <motion.button
+                    onClick={onClose}
+                    className="flex-1 py-3.5 bg-white/10 hover:bg-white/15 rounded-xl font-bold text-sm text-white/80 transition-all"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    {nextLevelConfig ? 'Choose Level' : 'New Exhibition'}
+                  </motion.button>
+
+                  <motion.button
+                    onClick={handleShare}
+                    className="flex-1 py-3.5 bg-white/10 hover:bg-white/15 rounded-xl font-bold text-sm text-white/80 transition-all flex items-center justify-center gap-1.5"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    {shareCopied ? (
+                      <><span>✅</span><span>Copied!</span></>
+                    ) : (
+                      <><span>📤</span><span>Share</span></>
+                    )}
+                  </motion.button>
+                </div>
               </div>
 
             </div>

@@ -507,6 +507,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               finalReplayMoves,
               completedAt - currentGame.started_at,
               levelScore,
+              finalGame.emojis,
             );
             saveGhostReplayIfBest(replay);
 

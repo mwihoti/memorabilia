@@ -122,6 +122,15 @@ function App() {
     setScreen('level-select');
   };
 
+  const handleNextLevel = async () => {
+    if (currentEra === null) return;
+    const nextLevel = currentLevel + 1;
+    if (nextLevel > 5) return;
+    resetGame();
+    await startLevelGame(currentEra, nextLevel, false);
+    setScreen('game');
+  };
+
   const handleShowGhostReplay = () => {
     // Load the latest best replay when triggered from WinModal
     if (currentEra !== null) {
@@ -254,6 +263,7 @@ function App() {
         {showWinModal && (
           <WinModal
             onClose={handleWinModalClose}
+            onNextLevel={currentEra !== null && currentLevel < 5 ? handleNextLevel : undefined}
             onShowGhostReplay={handleShowGhostReplay}
           />
         )}

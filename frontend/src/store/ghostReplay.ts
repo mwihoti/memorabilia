@@ -56,7 +56,8 @@ export function buildReplay(
   level: number,
   moves: ReplayMove[],
   totalTimeMs: number,
-  score: number
+  score: number,
+  emojis?: string[]
 ): GhostReplay {
-  return { gameId, era, level, moves, totalTime: totalTimeMs, score };
+  return { gameId, era, level, moves, totalTime: totalTimeMs, score, emojis };
 }

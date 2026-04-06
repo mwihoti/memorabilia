@@ -3,7 +3,7 @@ import { getAllPlayers, getLeaderboard, getLeaderboardStats, LocalPlayerData, Lo
 import { fetchLeaderboard, LeaderboardRow } from '../lib/api';
 import './UserDashboard.css';
 
-type DashboardTab = 'users' | 'leaderboard' | 'stats';
+type DashboardTab = 'users' | 'leaderboard' | 'stats' | 'advanced';
 
 export default function UserDashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('users');
@@ -11,6 +11,8 @@ export default function UserDashboard() {
   const [sortBy, setSortBy] = useState<'games' | 'active' | 'joined'>('games');
   const [autoRefresh, setAutoRefresh] = useState(true);
   
+  const [advancedTaps, setAdvancedTaps] = useState(0);
+  const [advancedUnlocked, setAdvancedUnlocked] = useState(false);
   const [allPlayers, setAllPlayers] = useState<LocalPlayerData[]>([]);
   const [leaderboardData, setLeaderboardData] = useState<LocalLeaderboardEntry[]>([]);
   const [statsData, setStatsData] = useState<any>(null);
@@ -98,11 +100,24 @@ export default function UserDashboard() {
     return formatDate(timestamp);
   };
 
+  const handleHeaderTap = () => {
+    const next = advancedTaps + 1;
+    setAdvancedTaps(next);
+    if (next >= 7 && !advancedUnlocked) {
+      setAdvancedUnlocked(true);
+    }
+  };
+
   return (
     <div className="user-dashboard">
-      <div className="dashboard-header">
+      <div className="dashboard-header" onClick={handleHeaderTap} style={{ cursor: 'default' }}>
         <h1>🎮 Player Dashboard</h1>
         <p>Track all players and their scores</p>
+        {advancedTaps > 0 && advancedTaps < 7 && (
+          <p style={{ fontSize: '10px', opacity: 0.4, marginTop: 2 }}>
+            {7 - advancedTaps} more to unlock advanced mode
+          </p>
+        )}
       </div>
 
       {/* Tab Navigation */}
@@ -125,6 +140,15 @@ export default function UserDashboard() {
         >
           📊 Analytics
         </button>
+        {advancedUnlocked && (
+          <button
+            className={`tab-btn ${activeTab === 'advanced' ? 'active' : ''}`}
+            onClick={() => setActiveTab('advanced')}
+            style={{ borderColor: '#ef4444' }}
+          >
+            🔐 Advanced
+          </button>
+        )}
       </div>
 
       {/* Users Tab */}
@@ -361,6 +385,74 @@ export default function UserDashboard() {
             <p style={{ fontSize: '0.9em', color: '#999' }}>
               Use these buttons to test or reset player data. Results will appear above.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Tab — hidden from normal users, unlocked by tapping header 7× */}
+      {activeTab === 'advanced' && advancedUnlocked && (
+        <div className="tab-content">
+          <div style={{ padding: '16px', background: '#1e1e2e', borderRadius: '12px', border: '1px solid #ef4444', marginBottom: '16px' }}>
+            <p style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '8px' }}>
+              🔐 ADVANCED · FOR DEVELOPERS ONLY
+            </p>
+            <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginBottom: '4px' }}>
+              Blockchain Security Reference
+            </h2>
+            <p style={{ color: '#999', fontSize: '12px' }}>
+              Educational content about on-chain game security. Not visible to regular players.
+            </p>
+          </div>
+
+          <div style={{ padding: '20px', background: '#0f172a', borderRadius: '12px', border: '1px solid #334155', lineHeight: 1.7 }}>
+            <h3 style={{ color: '#f87171', fontSize: '16px', fontWeight: 700, marginBottom: '12px' }}>
+              §5 — 51% Attack: What an Attacker Can (and Cannot) Do
+            </h3>
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px' }}>
+              A 51% attacker controls the majority of hashpower on a proof-of-work chain.
+            </p>
+
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ color: '#4ade80', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+                ✅ Realistic actions:
+              </p>
+              <ul style={{ color: '#cbd5e1', fontSize: '13px', paddingLeft: '16px' }}>
+                <li style={{ marginBottom: '4px' }}>Reorganise (re-mine) recent blocks → double-spend their own transactions.</li>
+                <li style={{ marginBottom: '4px' }}>Censor specific transactions or miners by ignoring their blocks.</li>
+                <li style={{ marginBottom: '4px' }}>Build a longer private chain and broadcast it at the right moment.</li>
+              </ul>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ color: '#f87171', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
+                ❌ What they CANNOT do:
+              </p>
+              <ul style={{ color: '#cbd5e1', fontSize: '13px', paddingLeft: '16px' }}>
+                <li style={{ marginBottom: '4px' }}>Arbitrarily break consensus rules (e.g. print extra tokens, change supply cap).</li>
+                <li style={{ marginBottom: '4px' }}>Steal UTXOs/assets that don't belong to them.</li>
+                <li style={{ marginBottom: '4px' }}>Create invalid signatures or bypass cryptographic proofs.</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: '12px', background: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
+              <p style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
+                <strong style={{ color: '#e2e8f0' }}>Why?</strong> Full nodes (not just miners) enforce consensus rules.
+                An invalid block is rejected by the entire network regardless of hashpower.
+                The attacker can only rewrite history they themselves created or recent blocks.
+                Economic cost is enormous — lost honest revenue plus severe market reaction.
+              </p>
+            </div>
+
+            <div style={{ marginTop: '16px', padding: '12px', background: '#0c1a3a', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
+              <p style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
+                🔷 Starknet / Layer-2 Note
+              </p>
+              <p style={{ color: '#94a3b8', fontSize: '12px' }}>
+                Starknet uses ZK-STARKs for validity proofs. State transitions are proven correct
+                before being accepted by L1 Ethereum. A 51% attack on Ethereum L1 would not
+                allow fabrication of invalid Starknet state transitions — the proof system prevents it.
+              </p>
+            </div>
           </div>
         </div>
       )}

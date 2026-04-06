@@ -310,6 +310,7 @@ export interface GhostReplay {
   moves: ReplayMove[];
   totalTime: number; // ms
   score: number;
+  emojis?: string[]; // actual emoji arrangement from the best run
 }
 
 // ── Era Level Configs ─────────────────────────────────────────────────────────
@@ -379,6 +380,11 @@ export function getStreakMultiplier(streak: DailyStreak): number {
   if (streak.currentStreak >= 14) return 1.5;
   if (streak.currentStreak >= 7)  return 1.25;
   return 1.0;
+}
+
+export function isLevelUnlocked(era: Difficulty, level: number, levelProgress: LevelProgress[]): boolean {
+  if (level <= 1) return true;
+  return levelProgress.some((lp) => lp.era === era && lp.level === level - 1 && lp.completed);
 }
 
 export function isEraUnlocked(era: Difficulty, levelProgress: LevelProgress[]): boolean {

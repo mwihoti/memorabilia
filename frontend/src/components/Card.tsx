@@ -148,7 +148,7 @@ export default function Card({
 
               {/* Center icon */}
               <motion.div
-                className="text-2xl sm:text-3xl z-10 filter drop-shadow-lg"
+                className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl z-10 filter drop-shadow-lg"
                 animate={!disabled ? {
                   scale: [1, 1.06, 1],
                   opacity: [0.9, 1, 0.9],
@@ -187,7 +187,7 @@ export default function Card({
 
               {/* Emoji */}
               <motion.div
-                className="text-2xl sm:text-3xl md:text-4xl filter drop-shadow-md z-10"
+                className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl filter drop-shadow-md z-10"
                 initial={false}
                 animate={isMatched ? {
                   scale: [1, 1.4, 1.1],

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import {
   Difficulty, ERA_LEVEL_CONFIGS, EraLevel, LevelProgress,
-  isEraUnlocked, TimeMedal,
+  isEraUnlocked, isLevelUnlocked, TimeMedal,
 } from '../types';
 import { loadDailyChallenge, getDailyChallengeConfig, isDailyChallengeCompleted } from '../store/dailyChallenge';
 import { hapticImpact } from '../telegram/telegram';
@@ -78,11 +78,12 @@ interface LevelButtonProps {
   eraConfig: EraConfig;
   levelConfig: EraLevel;
   progress?: LevelProgress;
+  locked: boolean;
   themeAccent: { selected: string; border: string; ring: string; text: string };
   onSelect: () => void;
 }
 
-function LevelButton({ eraConfig: _era, levelConfig, progress, themeAccent, onSelect }: LevelButtonProps) {
+function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAccent, onSelect }: LevelButtonProps) {
   const isComplete = progress?.completed ?? false;
   const medal      = progress?.bestMedal ?? 'none';
   const stars      = progress?.stars ?? 0;
@@ -90,42 +91,57 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, themeAccent, onSe
 
   return (
     <motion.button
-      onClick={onSelect}
+      onClick={locked ? undefined : onSelect}
       className={`
-        relative p-3 rounded-xl border-2 text-left transition-all duration-200
-        ${isComplete
+        relative p-3 lg:p-4 rounded-xl border-2 text-left transition-all duration-200
+        ${locked
+          ? 'border-white/5 bg-white/3 opacity-50 cursor-not-allowed'
+          : isComplete
           ? `border-green-500/30 bg-green-500/5 hover:border-green-400/50`
           : `border-white/10 bg-white/5 hover:border-white/20`
         }
       `}
-      whileHover={{ scale: 1.03 }}
-      whileTap={{ scale: 0.97 }}
+      whileHover={locked ? {} : { scale: 1.03 }}
+      whileTap={locked ? {} : { scale: 0.97 }}
     >
+      {/* Lock icon */}
+      {locked && (
+        <span className="absolute top-2 right-2 text-white/30 text-xs">🔒</span>
+      )}
+
       {/* Completed checkmark */}
-      {isComplete && (
+      {!locked && isComplete && (
         <span className="absolute top-2 right-2 text-green-400 text-xs font-bold">✓</span>
       )}
 
       {/* Level number + label */}
       <div className="flex items-center gap-1.5 mb-1.5">
-        <span className={`text-xs font-extrabold ${themeAccent.text}`}>Lv.{levelConfig.level}</span>
-        <span className="text-xs font-bold text-white truncate">{levelConfig.label}</span>
+        <span className={`text-xs lg:text-sm font-extrabold ${locked ? 'text-white/30' : themeAccent.text}`}>Lv.{levelConfig.level}</span>
+        <span className="text-xs lg:text-sm font-bold text-white truncate">{levelConfig.label}</span>
       </div>
 
       {/* Card count */}
-      <p className="text-[10px] text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
+      <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
 
       {/* Medal + stars row */}
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-sm leading-none">{medalIcon(medal)}</span>
-        <span className="text-[10px] text-white/60">{isComplete ? starDisplay(stars) : '☆☆☆'}</span>
-      </div>
+      {!locked && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-sm lg:text-base leading-none">{medalIcon(medal)}</span>
+          <span className="text-[10px] lg:text-xs text-white/60">{isComplete ? starDisplay(stars) : '☆☆☆'}</span>
+        </div>
+      )}
 
       {/* Preview + gold time */}
-      <div className="space-y-0.5">
-        <p className="text-[9px] text-white/30">{previewSec}</p>
-        <p className="text-[9px] text-white/30">🥇 &lt; {levelConfig.timeLimitGold}s</p>
-      </div>
+      {!locked && (
+        <div className="space-y-0.5">
+          <p className="text-[9px] lg:text-[10px] text-white/30">{previewSec}</p>
+          <p className="text-[9px] lg:text-[10px] text-white/30">🥇 &lt; {levelConfig.timeLimitGold}s</p>
+        </div>
+      )}
+
+      {locked && (
+        <p className="text-[9px] lg:text-[10px] text-white/25">Complete Level {levelConfig.level - 1} first</p>
+      )}
     </motion.button>
   );
 }
@@ -153,6 +169,7 @@ export default function LevelSelector({ onStart }: LevelSelectorProps) {
   };
 
   const handleLevelSelect = (era: Difficulty, level: number) => {
+    if (!isLevelUnlocked(era, level, levelProgress)) return;
     hapticImpact('medium');
     onStart(era, level);
   };
@@ -163,7 +180,7 @@ export default function LevelSelector({ onStart }: LevelSelectorProps) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -214,7 +231,7 @@ export default function LevelSelector({ onStart }: LevelSelectorProps) {
                 onClick={() => handleEraClick(era.id)}
               >
                 {/* Icon */}
-                <div className="text-3xl w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <div className="text-3xl lg:text-4xl w-12 h-12 lg:w-14 lg:h-14 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
                   {unlocked ? era.icon : '🔒'}
                 </div>
 
@@ -266,17 +283,21 @@ export default function LevelSelector({ onStart }: LevelSelectorProps) {
                     transition={{ duration: 0.25, ease: 'easeInOut' }}
                     className="overflow-hidden bg-[#1e293b]"
                   >
-                    <div className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {ERA_LEVEL_CONFIGS[era.id].map((levelConfig) => (
-                        <LevelButton
-                          key={levelConfig.level}
-                          eraConfig={era}
-                          levelConfig={levelConfig}
-                          progress={getLevelProgress(era.id, levelConfig.level, levelProgress)}
-                          themeAccent={themeAccent}
-                          onSelect={() => handleLevelSelect(era.id, levelConfig.level)}
-                        />
-                      ))}
+                    <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                      {ERA_LEVEL_CONFIGS[era.id].map((levelConfig) => {
+                        const lvlLocked = !isLevelUnlocked(era.id, levelConfig.level, levelProgress);
+                        return (
+                          <LevelButton
+                            key={levelConfig.level}
+                            eraConfig={era}
+                            levelConfig={levelConfig}
+                            progress={getLevelProgress(era.id, levelConfig.level, levelProgress)}
+                            locked={lvlLocked}
+                            themeAccent={themeAccent}
+                            onSelect={() => handleLevelSelect(era.id, levelConfig.level)}
+                          />
+                        );
+                      })}
                     </div>
                   </motion.div>
                 )}

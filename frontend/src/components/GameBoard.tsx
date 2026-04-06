@@ -138,11 +138,12 @@ export default function GameBoard() {
   const RING_R = 18;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
-  // Dynamic grid based on card count — tighter on mobile
+  // Dynamic grid — always even columns (2, 4, 6) per requirement
+  const actualCardCount = currentGame.cards.length;
   const gridClass =
-    config.cardCount === 12 ? 'grid-cols-4' :
-    config.cardCount === 20 ? 'grid-cols-5' :
-    'grid-cols-5 sm:grid-cols-6'; // 30 cards: 5-col on mobile to keep cards bigger
+    actualCardCount <= 16 ? 'grid-cols-4' :
+    actualCardCount <= 24 ? 'grid-cols-4 md:grid-cols-6' :
+    'grid-cols-4 md:grid-cols-6'; // 30 cards: 4-col mobile, 6-col desktop
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -163,7 +164,7 @@ export default function GameBoard() {
   const progressBar = theme === 'museum' ? 'from-amber-500 to-amber-700' : theme === 'nature' ? 'from-green-500 to-green-700' : 'from-[#00ff88] to-[#00e5ff]';
 
   return (
-    <div className="max-w-2xl mx-auto px-0.5 sm:px-1">
+    <div className="max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto px-0.5 sm:px-1">
 
       {/* Era label */}
       <motion.div

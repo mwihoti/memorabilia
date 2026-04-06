@@ -22,20 +22,6 @@ function formatTime(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Simple seeded shuffle for deterministic emoji placement
-function seededShuffle<T>(arr: T[], seed: number): T[] {
-  const result = [...arr];
-  let s = seed;
-  for (let i = result.length - 1; i > 0; i--) {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    const j = Math.abs(s) % (i + 1);
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-const CARD_EMOJIS_POOL = ['🏺', '⚔️', '🚀', '🛡️', '👑', '📜', '🗺️', '🔮', '⚗️', '🏛️', '🌙', '🔭'];
-
 export default function GhostReplayModal({ replay, era: eraProp, level: levelProp, onClose }: GhostReplayModalProps) {
   const era   = eraProp   ?? replay.era;
   const level = levelProp ?? replay.level;
@@ -45,11 +31,27 @@ export default function GhostReplayModal({ replay, era: eraProp, level: levelPro
   const cardCount     = levelConfig?.cardCount ?? replay.moves.length;
   const pairCount     = cardCount / 2;
 
-  // Build the card emoji array deterministically
-  const emojis = seededShuffle(
-    [...CARD_EMOJIS_POOL.slice(0, pairCount), ...CARD_EMOJIS_POOL.slice(0, pairCount)],
-    replay.gameId
-  );
+  // Use saved emojis from the actual best run, or fall back to generic placeholders
+  const buildEmojiGrid = (): string[] => {
+    if (replay.emojis && replay.emojis.length >= pairCount) {
+      // Reconstruct the card grid: saved emojis are [emoji0, emoji1, ..., emojiN] for N pairs
+      // We need to create a paired array of length cardCount, but we don't know the original
+      // shuffle order. Show emojis as sequential pairs for visual clarity.
+      const paired: string[] = [];
+      for (let i = 0; i < pairCount; i++) {
+        paired.push(replay.emojis[i], replay.emojis[i]);
+      }
+      return paired;
+    }
+    // Fallback: generic numbered placeholders
+    const fallback: string[] = [];
+    for (let i = 0; i < pairCount; i++) {
+      fallback.push(`${i + 1}️⃣`, `${i + 1}️⃣`);
+    }
+    return fallback;
+  };
+
+  const emojis = buildEmojiGrid();
 
   const [playing, setPlaying]     = useState(false);
   const [speed, setSpeed]         = useState<1 | 2>(1);
@@ -120,8 +122,8 @@ export default function GhostReplayModal({ replay, era: eraProp, level: levelPro
     urban:  { btn: 'from-[#00ff88] to-[#00e5ff] hover:from-[#00e5ff]', text: 'text-[#00ff88]', badge: 'bg-[#00ff88]/10 border-[#00ff88]/25 text-[#00ff88]'  },
   }[theme];
 
-  // Compute columns for mini grid
-  const cols = cardCount <= 8 ? 4 : cardCount <= 12 ? 4 : cardCount <= 16 ? 4 : 5;
+  // Compute columns for mini grid — always even (2, 4, 6)
+  const cols = cardCount <= 16 ? 4 : 6;
 
   return (
     <AnimatePresence>
