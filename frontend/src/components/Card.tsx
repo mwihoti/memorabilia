@@ -120,18 +120,24 @@ export default function Card({
       whileTap={!disabled && !isMatched ? { scale: 0.92 } : {}}
       onClick={handleClick}
     >
-      <div className="relative w-full h-full" style={{ perspective: '800px' }}>
+      <div
+        className="relative w-full h-full"
+        style={{ perspective: '1200px', willChange: 'transform' }}
+      >
         <motion.div
           className="w-full h-full relative"
           initial={false}
           animate={{ rotateY: isFlipped || isMatched ? 180 : 0 }}
           transition={{ duration: 0.13, ease: [0.4, 0, 0.2, 1] }}
-          style={{ transformStyle: 'preserve-3d' }}
+          style={{ transformStyle: 'preserve-3d', willChange: 'transform' }}
         >
           {/* ── Card Back ─────────────────────────────────────────────────── */}
           <div
             className="absolute w-full h-full rounded-xl overflow-hidden"
-            style={{ backfaceVisibility: 'hidden' }}
+            style={{
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+            }}
           >
             <div className={`
               w-full h-full rounded-xl flex items-center justify-center relative
@@ -146,13 +152,13 @@ export default function Card({
               <div className="absolute inset-[3px] rounded-lg border border-white/10 pointer-events-none" />
               <div className="absolute inset-[6px] rounded-md border border-white/5 pointer-events-none" />
 
-              {/* Center icon */}
+              {/* Center icon — only animate when face-up to avoid GPU repaint bleed-through */}
               <motion.div
-                className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl z-10 filter drop-shadow-lg"
-                animate={!disabled ? {
+                className="text-2xl sm:text-3xl md:text-3xl z-10 filter drop-shadow-lg"
+                animate={!disabled && !isFlipped && !isMatched ? {
                   scale: [1, 1.06, 1],
                   opacity: [0.9, 1, 0.9],
-                } : {}}
+                } : { scale: 1, opacity: 0.9 }}
                 transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: index * 0.15 }}
               >
                 {cardBack.centerIcon}
@@ -163,7 +169,11 @@ export default function Card({
           {/* ── Card Front ────────────────────────────────────────────────── */}
           <div
             className="absolute w-full h-full rounded-xl overflow-hidden"
-            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+            style={{
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)',
+            }}
           >
             <div className={`
               w-full h-full rounded-xl flex items-center justify-center relative
