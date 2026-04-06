@@ -1,358 +1,348 @@
 # Memorabilia
 
+> An on-chain memory card matching game built on Starknet with the Dojo engine, playable as a Telegram Mini App — no wallet or gas fees required to start playing.
+
+**Play now:** [t.me/enter_memorabilia_musem_bot](https://t.me/enter_memorabilia_musem_bot)  
+**Web App:** [memorabilia-game.vercel.app](https://memorabilia-game.vercel.app)  
+**Twitter:** [@memorabiliadojo](https://twitter.com/memorabiliadojo)
+
+---
+
 ## Submission Track
-Full Game
+
+Full Game + Dojo Telegram SDK
+
+---
 
 ## Project Summary
-A fully on-chain memory card matching game built on Starknet using the Dojo framework, integrated with Telegram Mini Apps for seamless user experience through Account Abstraction. The game features a custom Dojo Telegram SDK that enables gasless transactions and real-time game state updates.
 
-## GitHub
-[Memorabilia Repository](https://github.com/Talent-Index/memorabilia)
+Memorabilia is a fully on-chain memory card matching game built on Starknet using the Dojo framework. Players flip cards, find matching pairs, earn medals, unlock levels, and climb a global leaderboard — all inside Telegram with no blockchain knowledge required.
 
-## Play
-1. Install dependencies:
-```bash
-# Install frontend dependencies
-cd frontend
-npm install
+The game features a custom Dojo Telegram SDK enabling gasless transactions, Account Abstraction for seamless onboarding, and a rich progression system with 3 eras, 15 levels, daily challenges, ghost replays, combo multipliers, and NFT minting via Cartridge.
 
-# Install SDK dependencies
-cd ../dojo-telegram-sdk
-npm install
-```
+---
 
-2. Start the game:
-```bash
-# Run in demo mode (no contracts required)
-./scripts/run_local_demo.sh --demo
-```
+## Team
 
-For full blockchain mode, see `DEPLOYMENT_GUIDE.md` for contract deployment steps.
+| Name | GitHub | Email |
+|------|--------|-------|
+| Ahmed | [@ahmedabdikadir914](https://github.com/ahmedabdikadir914) | ahmedabdikadir914@gmail.com |
+| Leonard | [@tweenhaven35](https://github.com/tweenhaven35) | tweenhaven35@gmail.com |
+| Daniel | [@mwihoti](https://github.com/mwihoti) | DanielMwihoti@gmail.com |
+| Kelly | [@gakikelly](https://github.com/gakikelly) | gakikelly403@gmail.com |
+| Peter | [@mainapeter](https://github.com/mainapeter) | mainapeterkanyuki@gmail.com |
+| Rosemary | [@rozypopyl](https://github.com/rozypopyl)) | Rozypopyl6@gmail.com |
 
-## Twitter
-- Project: @
+---
 
-## Team Members
-- Ahmed [@ahmedabdikadir914](https://github.com/ahmedabdikadir914) - ahmedabdikadir914@gmail.com
-- Leonard [@tweenhaven35](https://github.com/tweenhaven35) - tweenhaven35@gmail.com
-- Daniel [@mwihoti](https://github.com/mwihoti) - DanielMwihoti@gmail.com
-- Kelly [@gakikelly](https://github.com/gakikelly) - gakikelly403@gmail.com
-- Peter Maina [@mainapeter](https://github.com/mainapeter) - mainapeterkanyuki@gmail.com
-- Rosemary [@rozypopyl](https://github.com/rozypopyl) - Rozypopyl6@gmail.com
+## Features
 
-## Key Features
-- Memory card matching game with multiple difficulty levels
-- Real-time game state updates via Torii indexer
-- Gasless transactions using Account Abstraction
-- Telegram Mini App integration
-- Custom Dojo Telegram SDK for easy integration
-- On-chain leaderboard and achievements
+### Gameplay
+- **3 Eras × 5 Levels** — Ancient (🏺), Medieval (⚔️), Modern (🚀); 15 levels total with sequential unlock (must complete level N before N+1)
+- **Card counts** — 8, 12, 16, 20, 24 cards per level; grids always use even column counts (4 or 6)
+- **Preview phase** — memorise the board before the clock starts (3s → 0s as levels increase)
+- **Time medals** — Gold / Silver / Bronze based on completion speed
+- **Combo multiplier** — consecutive matches build up to 3× score bonus
+- **Daily challenges** — a new seeded level every day
+- **Ghost replay** — record your best run and watch it back with accurate emoji layout
+- **"Next Level" flow** — after completing a level, go straight to the next or browse levels
+- **All levels complete** — celebratory popup when all 15 levels are mastered
 
-## Technical Stack
-- **Smart Contracts**: Cairo (Dojo framework)
-- **Frontend**: React + Vite + Tailwind
-- **Blockchain**: Starknet (Katana for local development)
-- **Integration**: Telegram Mini Apps API
-- **SDK**: Custom Dojo Telegram SDK
-- **Indexing**: Torii for real-time updates
-- **Greeting System**: Proof-of-concept for gasless interactions
+### Progression & Meta
+- **15 Achievements** — speed runs, perfect memory, streaks, era mastery, and more
+- **Daily streak** — shields earned at day 3 and day 7 protect your streak; score multiplier up to +100% at 30-day streak
+- **Star ratings** — 1–3 stars per level based on move efficiency
+- **Global leaderboard** — powered by Neon PostgreSQL, updated live
 
+### Visuals
+- **3 themes** — Museum (amber), Nature (forest green), Urban (neon graffiti)
+- **Responsive layout** — works on mobile, tablet, laptop, and large desktop screens
+- **Smooth flip animations** — 3D card flip with correct backface-visibility on all screen sizes
 
+### Blockchain
+- **On-chain game logic** — Cairo smart contracts via Dojo engine
+- **Account Abstraction** — gasless gameplay via session keys
+- **NFT minting** — Cartridge wallet integration; mint score NFTs for high achievements
+- **Torii indexer** — real-time on-chain state queries
 
-## 🏗️ Architecture
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Smart Contracts | Cairo + Dojo Engine |
+| Frontend | React 18 + Vite + TypeScript + Tailwind CSS |
+| Animations | Framer Motion |
+| Blockchain | Starknet (Katana for local dev) |
+| Wallet | Cartridge Controller |
+| Telegram | Mini Apps API + Telegraf bot |
+| Database | Neon PostgreSQL (leaderboard) |
+| Deployment | Vercel (frontend + API routes) |
+| Indexing | Torii |
+
+---
+
+## Architecture
 
 ```
 memorabilia/
-├── src/
-│   ├── models/              # Data models
-│   │   ├── user_account.cairo
+├── frontend/                   # React + Vite web app
+│   └── src/
+│       ├── components/         # UI components
+│       │   ├── GameBoard.tsx   # Card grid, timer, stats bar
+│       │   ├── Card.tsx        # Individual card with 3D flip
+│       │   ├── LevelSelector.tsx  # Era/level picker with unlock logic
+│       │   ├── WinModal.tsx    # Post-game results, next-level, NFT mint
+│       │   ├── GhostReplayModal.tsx  # Watch best run replay
+│       │   ├── UserDashboard.tsx     # Admin dashboard
+│       │   └── ...
+│       ├── store/
+│       │   ├── gameStore.ts    # Zustand global state
+│       │   ├── achievementStore.ts
+│       │   ├── ghostReplay.ts  # Best-run recording/playback
+│       │   ├── streakStore.ts  # Daily streak + shields
+│       │   ├── dailyChallenge.ts
+│       │   └── demoGame.ts     # Demo mode game logic
+│       ├── dojo/               # Starknet/Dojo integration
+│       ├── cartridge/          # Cartridge wallet + NFT minting
+│       └── telegram/           # Telegram WebApp SDK helpers
+├── src/                        # Cairo smart contracts
+│   ├── models/
 │   │   ├── game_state.cairo
-│   │   ├── card.cairo
+│   │   ├── user_account.cairo
 │   │   ├── leaderboard.cairo
+│   │   ├── score_nft.cairo
 │   │   └── session_policy.cairo
-│   ├── systems/             # Game systems (smart contracts)
-│   │   ├── account_registry.cairo
+│   ├── systems/
 │   │   ├── game_system.cairo
-│   │   ├── greeting_system.cairo
-│   │   └── leaderboard_system.cairo
-│   ├── utils/               # Utility functions
-│   │   ├── card_generator.cairo
-│   │   ├── random.cairo
-│   │   └── scoring.cairo
-│   └── tests/               # Test suite
-├── scripts/
-│   └── deploy.sh            # Deployment script
-└── Scarb.toml               # Project configuration
+│   │   ├── account_registry.cairo
+│   │   ├── leaderboard_system.cairo
+│   │   └── nft_system.cairo
+│   └── utils/
+│       ├── card_generator.cairo
+│       ├── random.cairo
+│       └── scoring.cairo
+├── telegram-bot/               # Telegraf bot (@enter_memorabilia_musem_bot)
+│   └── index.js
+├── api/                        # Vercel serverless functions
+│   ├── leaderboard.ts
+│   ├── scores.ts
+│   ├── player/[telegramId].ts
+│   └── telegram-webhook.ts
+├── dojo-telegram-sdk/          # Reusable SDK package
+└── Scarb.toml
 ```
 
-## 🚀 Getting Started
+---
+
+## Getting Started
 
 ### Prerequisites
 
-1. **Install Dojo** (v1.0.0-alpha.6 or later)
-   ```bash
-   curl -L https://install.dojoengine.org | bash
-   dojoup
-   ```
+```bash
+# Dojo engine
+curl -L https://install.dojoengine.org | bash && dojoup
 
-2. **Install Scarb** (Cairo package manager)
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | sh
-   ```
+# Scarb (Cairo package manager)
+curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | sh
+```
 
-### Installation
+### Run in Demo Mode (no contracts needed)
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd memorabilia
-   ```
+```bash
+git clone https://github.com/mwihoti/memorabilia.git
+cd memorabilia/frontend
+npm install
+npm run dev
+```
 
-2. Build the project:
-   ```bash
-   sozo build
-   ```
+The app auto-detects demo mode when `VITE_WORLD_ADDRESS` is unset and runs entirely client-side.
 
-3. Run tests:
-   ```bash
-   sozo test
-   ```
+### Run with Blockchain
 
-### Local Development
-
-1. Start a local Katana node (Starknet devnet):
+1. Start a local Katana node:
    ```bash
    katana --disable-fee
    ```
 
-2. In another terminal, deploy the contracts:
+2. Deploy contracts:
    ```bash
+   sozo build
    chmod +x scripts/deploy.sh
    ./scripts/deploy.sh katana
    ```
 
-3. Note the world address from the deployment output
+3. Copy the world address into `frontend/.env`:
+   ```env
+   VITE_WORLD_ADDRESS=0x...
+   VITE_RPC_URL=http://localhost:5050
+   ```
 
-## 🎯 How to Play
+4. Start the frontend:
+   ```bash
+   cd frontend && npm run dev
+   ```
 
-### Game Flow
+### Environment Variables
 
-1. **Register Account**: Authenticate via Telegram and create on-chain account
-2. **Start Game**: Choose difficulty level (Easy/Medium/Hard)
-3. **Play**: Flip cards to find matching pairs
-4. **Win**: Match all pairs to complete the game
-5. **Compete**: Your score is submitted to the global leaderboard
+```env
+# Frontend (frontend/.env)
+VITE_WORLD_ADDRESS=       # Dojo world address (leave empty for demo mode)
+VITE_RPC_URL=             # Starknet RPC endpoint
+VITE_API_URL=             # Backend API base URL
 
-### Scoring System
-
-Your score is calculated based on:
-- **Base Score**: 10,000 points
-- **Difficulty Multiplier**: 
-  - Easy: 10x (1,000 bonus)
-  - Medium: 15x (1,500 bonus)
-  - Hard: 20x (2,000 bonus)
-- **Time Bonus**: Faster completion = higher score
-- **Move Penalty**: Extra moves reduce your score
-
-**Star Ratings**:
-- ⭐⭐⭐ 3 Stars: Within 10% of optimal moves
-- ⭐⭐ 2 Stars: Within 50% of optimal moves
-- ⭐ 1 Star: Completed
-
-## 📝 Smart Contract Interactions
-
-### Account Registry
-
-```cairo
-// Register new account
-register_account(telegram_id, owner_public_key, session_public_key) -> ContractAddress
-
-// Update session key
-update_session_key(telegram_id, new_session_key)
-
-// Get account info
-get_account(telegram_id) -> UserAccount
+# API / Bot (.env)
+BOT_TOKEN=                # Telegram bot token
+WEB_APP_URL=              # Vercel deployment URL
+DATABASE_URL=             # Neon PostgreSQL connection string
+TELEGRAM_BOT_SECRET=      # Webhook secret
 ```
+
+---
+
+## How to Play
+
+1. Open the bot: [@enter_memorabilia_musem_bot](https://t.me/enter_memorabilia_musem_bot)
+2. Tap **Play Now** to launch the Mini App
+3. Enter your display name
+4. Choose an era — start with **Ancient Era**
+5. Complete **Level 1** to unlock Level 2, and so on
+6. Study the cards during the preview window, then flip pairs to find matches
+7. Match all pairs to win — faster and fewer moves = better medal and score
+8. After each level you can jump directly to the next level or browse the level map
+9. Complete all 15 levels to unlock the "More Games Coming" celebration
+
+### Scoring
+
+| Component | Detail |
+|-----------|--------|
+| Base score | Moves × difficulty multiplier |
+| Time bonus | +500 pts Gold, +250 Silver, +100 Bronze |
+| Combo bonus | Up to ×3 for consecutive matches |
+| Streak bonus | Up to +100% for a 30-day daily streak |
+
+### Medal times (Level 1 example)
+
+| Medal | Time |
+|-------|------|
+| Gold | ≤ 60s |
+| Silver | ≤ 90s |
+| Bronze | ≤ 120s |
+
+---
+
+## Smart Contract Reference
 
 ### Game System
 
 ```cairo
-// Start new game
-start_game(difficulty: u8) -> u32  // Returns game_id
-
-// Flip a card
+start_game(difficulty: u8) -> u32        // Returns game_id
 flip_card(game_id: u32, card_index: u8)
-
-// Check if flipped cards match
 check_match(game_id: u32) -> bool
-
-// Get game state
 get_game(game_id: u32) -> GameState
-
-// Abandon game
 abandon_game(game_id: u32)
+```
+
+### Account Registry
+
+```cairo
+register_account(telegram_id, owner_key, session_key) -> ContractAddress
+update_session_key(telegram_id, new_key)
+get_account(telegram_id) -> UserAccount
 ```
 
 ### Leaderboard System
 
 ```cairo
-// Submit score after game completion
 submit_score(game_id, telegram_id, score, difficulty, moves, time)
-
-// Get leaderboard entry by rank
 get_leaderboard_entry(rank: u32) -> LeaderboardEntry
-
-// Get player statistics
 get_player_stats(player: ContractAddress) -> PlayerStats
-
-// Get player's current rank
 get_player_rank(player: ContractAddress) -> u32
 ```
 
-### Greeting System (Demo)
+### NFT System
 
 ```cairo
-// Set greeting message (gasless transaction demo)
-set_greeting(message: ByteArray)
-
-// Get greeting
-get_greeting(user: ContractAddress) -> ByteArray
+mint_score_nft(player, score, game_id) -> token_id
+get_nft_metadata(token_id) -> ScoreNFT
 ```
 
-## 🧪 Testing
+---
 
-Run the full test suite:
+## Testing
+
 ```bash
+# Run all contract tests
 sozo test
-```
 
-Run specific test file:
-```bash
+# Run specific suite
 sozo test test_game_system
+sozo test test_leaderboard
+sozo test test_account_registry
 ```
 
-### Test Coverage
+**Coverage:**
+- Game System: start, flip, match, win conditions, scoring
+- Account Registry: registration, session key rotation, policies
+- Leaderboard: submission, ranking, player stats
+- NFT System: minting, metadata, eligibility
 
-- ✅ Game System: Start game, flip cards, match checking, win conditions
-- ✅ Account Registry: Registration, session keys, policies
-- ✅ Leaderboard: Score submission, rankings, player stats
-- ✅ Utilities: Card generation, shuffling, scoring
+---
 
-## 🔐 Account Abstraction & Session Keys
+## Deployment
 
-Memorabilia uses Account Abstraction to provide a seamless user experience:
-
-1. **Telegram Authentication**: Users authenticate via Telegram
-2. **Account Creation**: On-chain account is created automatically
-3. **Session Keys**: Temporary keys for gasless transactions
-4. **Session Policies**: Define allowed contracts and methods
-5. **Gasless Gaming**: Players don't need to manage gas fees
-
-## 🌐 Deployment
-
-### Deploy to Katana (Local)
 ```bash
+# Local (Katana)
 ./scripts/deploy.sh katana
-```
 
-### Deploy to Testnet
-```bash
+# Testnet (Sepolia)
 ./scripts/deploy.sh sepolia
-```
 
-### Deploy to Mainnet
-```bash
+# Mainnet
 ./scripts/deploy.sh mainnet
 ```
 
-## 📊 Models
+Frontend is deployed automatically to Vercel on every push to `main`.
 
-### UserAccount
-- Telegram ID (key)
-- Owner public key
-- Session public key
-- Account address
-- Activity tracking
-- Game statistics
+---
 
-### GameState
-- Game ID (key)
-- Player address
-- Difficulty level
-- Card array
-- Match tracking
-- Score and timing
+## Roadmap
 
-### Card
-- Card ID
-- Value (for matching)
-- Flip state
-- Match state
-- Position
+- [x] Core memory game with Demo mode
+- [x] 3 Eras × 5 Levels with sequential unlocking
+- [x] Time medals (Gold / Silver / Bronze)
+- [x] Combo multiplier system
+- [x] Daily challenges
+- [x] Ghost replay (watch your best run)
+- [x] 15 Achievements
+- [x] Daily streak with shields + score bonus
+- [x] 3 visual themes (Museum / Nature / Urban)
+- [x] NFT minting via Cartridge
+- [x] Global leaderboard (Neon PostgreSQL)
+- [x] Responsive layout for mobile, tablet, and desktop
+- [x] Telegram bot (@enter_memorabilia_musem_bot)
+- [ ] Telegram Stars payments for premium features
+- [ ] Tournament mode with prize pools
+- [ ] Avalanche / multi-chain support
+- [ ] Season Pass with exclusive themes and bonus levels
 
-### LeaderboardEntry
-- Rank (key)
-- Player info
-- Score details
-- Game metadata
+---
 
-### PlayerStats
-- Total games
-- Win statistics
-- Best scores
-- Performance metrics
-
-## 🛠️ Development
-
-### Project Structure
-
-- **Models**: Define data structures stored on-chain
-- **Systems**: Smart contracts containing game logic
-- **Utils**: Helper functions for calculations
-- **Tests**: Comprehensive test coverage
-
-### Adding New Features
-
-1. Define models in `src/models/`
-2. Implement systems in `src/systems/`
-3. Add utilities in `src/utils/`
-4. Write tests in `src/tests/`
-5. Update `src/lib.cairo` to include new modules
-
-## 📚 Resources
+## Resources
 
 - [Dojo Book](https://book.dojoengine.org/)
 - [Cairo Documentation](https://book.cairo-lang.org/)
 - [Starknet Documentation](https://docs.starknet.io/)
 - [Telegram Mini Apps](https://core.telegram.org/bots/webapps)
+- [Cartridge Controller](https://docs.cartridge.gg/)
 
-## 🤝 Contributing
+---
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## License
 
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🎯 Roadmap
-
-- [x] Sprint 1: Account Abstraction & Authentication
-- [x] Sprint 2: Core Game Logic
-- [x] Sprint 3: Leaderboard System
-- [ ] Sprint 4: Telegram Mini App Integration
-- [ ] Sprint 5: Advanced Features (Power-ups, Tournaments)
-- [ ] Sprint 6: NFT Rewards & Achievements
-
-## 💡 Future Enhancements
-
-- **NFT Rewards**: Mint NFTs for achievements
-- **Tournaments**: Competitive events with prizes
-- **Power-ups**: Special abilities during gameplay
-- **Social Features**: Challenge friends, share scores
-- **Multiple Themes**: Different card designs
-- **Daily Challenges**: Special game modes
+MIT
 
 ---
 
 Built with ❤️ using Dojo on Starknet
-
