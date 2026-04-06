@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const WEB_APP_URL = process.env.WEB_APP_URL || 'https://memorabilia-game-6gmm06lfd-mwihotis-projects.vercel.app';
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://memorabilia-game.vercel.app';
 const API_URL = process.env.API_URL || WEB_APP_URL;
 
 if (!BOT_TOKEN) {
@@ -306,9 +306,15 @@ bot.catch((err, ctx) => {
 
 // ── Launch ────────────────────────────────────────────────────────────────────
 
+console.log('⏳ Starting Memorabilia bot...');
+console.log(`🎮 Web App: ${WEB_APP_URL}`);
+
 bot.launch().then(() => {
-  console.log('✅ Memorabilia bot running');
-  console.log(`🎮 Web App: ${WEB_APP_URL}`);
+  console.log('✅ Memorabilia bot is running!');
+  console.log('📱 Bot is ready to receive commands');
+}).catch((err) => {
+  console.error('❌ Failed to launch bot:', err?.message || err);
+  process.exit(1);
 });
 
 process.once('SIGINT',  () => bot.stop('SIGINT'));

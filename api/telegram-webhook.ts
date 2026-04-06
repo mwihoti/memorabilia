@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const TOKEN    = process.env.BOT_TOKEN!;
-const WEB_APP  = process.env.WEB_APP_URL || 'https://memorabilia-game-6gmm06lfd-mwihotis-projects.vercel.app';
+const WEB_APP  = process.env.WEB_APP_URL || 'https://memorabilia-game.vercel.app';
 const API_URL  = process.env.API_URL || WEB_APP;
 const TG       = `https://api.telegram.org/bot${TOKEN}`;
 
