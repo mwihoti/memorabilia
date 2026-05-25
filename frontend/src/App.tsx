@@ -21,6 +21,7 @@ import Waves from './components/Waves';
 import LevelSelector from './components/LevelSelector';
 import AchievementToast from './components/AchievementToast';
 import GhostReplayModal from './components/GhostReplayModal';
+import IntroCinematic from './components/IntroCinematic';
 
 type Screen = 'loading' | 'name-entry' | 'difficulty' | 'level-select' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
 
@@ -29,6 +30,9 @@ function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [showGhostReplay, setShowGhostReplay] = useState(false);
   const [ghostReplayData, setGhostReplayData] = useState<GhostReplay | null>(null);
+  const [showOpeningIntro, setShowOpeningIntro] = useState(false);
+  const [showSplashIntro, setShowSplashIntro] = useState(false);
+  const [showLevelIntro, setShowLevelIntro] = useState(false);
 
   const {
     telegramUser,
@@ -47,6 +51,22 @@ function App() {
     newlyUnlockedAchievements,
     clearNewAchievements,
   } = useGameStore();
+
+  useEffect(() => {
+    if (isInitializing) return;
+    const hasSeenOpening = localStorage.getItem('memorabilia_seen_opening_intro') === '1';
+    if (!hasSeenOpening) {
+      setShowOpeningIntro(true);
+      localStorage.setItem('memorabilia_seen_opening_intro', '1');
+      return;
+    }
+    setShowSplashIntro(true);
+  }, [isInitializing]);
+
+  useEffect(() => {
+    if (!currentGame || screen !== 'game') return;
+    setShowLevelIntro(true);
+  }, [currentGame?.game_id, screen]);
 
   // Initialize app
   useEffect(() => {
@@ -252,7 +272,7 @@ function App() {
           )}
 
           {screen === 'game' && currentGame && (
-            <GameBoard />
+            !showLevelIntro ? <GameBoard /> : null
           )}
 
           {screen === 'leaderboard' && (
@@ -285,6 +305,29 @@ function App() {
       <AchievementToast
         achievements={newlyUnlockedAchievements}
         onDismiss={clearNewAchievements}
+      />
+
+      <IntroCinematic
+        mode="opening"
+        open={showOpeningIntro}
+        onComplete={() => {
+          setShowOpeningIntro(false);
+          setShowSplashIntro(true);
+        }}
+      />
+
+      <IntroCinematic
+        mode="splash"
+        open={showSplashIntro}
+        onComplete={() => setShowSplashIntro(false)}
+      />
+
+      <IntroCinematic
+        mode="level"
+        open={showLevelIntro && !!currentGame && screen === 'game'}
+        era={currentEra}
+        level={currentLevel}
+        onComplete={() => setShowLevelIntro(false)}
       />
     </div>
   );
