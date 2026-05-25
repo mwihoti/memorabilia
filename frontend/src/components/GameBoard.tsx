@@ -25,7 +25,6 @@ export default function GameBoard() {
     pendingMultiplier,
     hiddenCardIndices,
     pulseScanRow,
-    boardRotationDeg,
     hintPairIndices,
     useHint,
     useFreeze,
@@ -407,11 +406,7 @@ export default function GameBoard() {
       </AnimatePresence>
 
       {/* Game Board */}
-      <motion.div
-        className={`grid ${gridClass} gap-1.5 sm:gap-2`}
-        animate={{ rotate: boardRotationDeg % 360 }}
-        transition={{ duration: 0.55, ease: 'easeInOut' }}
-      >
+      <div className={`grid ${gridClass} gap-1.5 sm:gap-2`}>
         {currentGame.cards.map((card, index) => {
           const isMatched = card.is_matched;
           const columns = actualCardCount <= 16 ? 4 : 6;
@@ -438,7 +433,7 @@ export default function GameBoard() {
             />
           );
         })}
-      </motion.div>
+      </div>
 
       {/* Checking indicator */}
       <AnimatePresence>
