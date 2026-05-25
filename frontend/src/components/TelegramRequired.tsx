@@ -96,6 +96,8 @@ export default function TelegramRequired() {
                 <div className="flex justify-between"><span>🏺 Ancient Era</span><span className="text-white/50">6 pairs · 12 cards</span></div>
                 <div className="flex justify-between"><span>⚔️ Medieval Times</span><span className="text-white/50">10 pairs · 20 cards</span></div>
                 <div className="flex justify-between"><span>🚀 Modern Era</span><span className="text-white/50">15 pairs · 30 cards</span></div>
+                <div className="flex justify-between"><span>🛸 Future Nexus</span><span className="text-white/50">16 pairs · 32 cards</span></div>
+                <div className="flex justify-between"><span>🐲 Mythic Vault</span><span className="text-white/50">16 pairs · 32 cards</span></div>
               </div>
             </div>
 

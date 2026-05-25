@@ -1,9 +1,10 @@
 // Local storage for player scores and stats in demo mode
-import { GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal } from '../types';
+import { DIFFICULTY_ORDER, GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal, RelicReward, getDifficultyMeta } from '../types';
 
 const STORAGE_KEY = 'memorabilia_player_data';
 const LEADERBOARD_KEY = 'memorabilia_leaderboard';
 const LEVEL_PROGRESS_KEY = 'memorabilia_level_progress';
+const RELIC_REWARDS_KEY = 'memorabilia_relic_rewards';
 
 export interface LocalPlayerData {
   telegramId: number;
@@ -220,16 +221,7 @@ function saveLeaderboard(leaderboard: LocalLeaderboardEntry[]) {
  * Get difficulty name from number
  */
 function getDifficultyName(difficulty: number): string {
-  switch (difficulty) {
-    case 1:
-      return 'Ancient Era';
-    case 2:
-      return 'Medieval Times';
-    case 3:
-      return 'Modern Era';
-    default:
-      return 'Unknown';
-  }
+  return getDifficultyMeta(difficulty as Difficulty)?.label ?? 'Unknown';
 }
 
 /**
@@ -331,11 +323,29 @@ export function getEraCompletionStatus(): Record<Difficulty, { levelsCompleted: 
     return { levelsCompleted, maxLevel };
   }
 
-  return {
-    [Difficulty.Easy]:   eraStatus(Difficulty.Easy),
-    [Difficulty.Medium]: eraStatus(Difficulty.Medium),
-    [Difficulty.Hard]:   eraStatus(Difficulty.Hard),
-  };
+  return Object.fromEntries(
+    DIFFICULTY_ORDER.map((era) => [era, eraStatus(era)])
+  ) as Record<Difficulty, { levelsCompleted: number; maxLevel: number }>;
+}
+
+export function getRelicRewards(): RelicReward[] {
+  try {
+    const data = localStorage.getItem(RELIC_REWARDS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveRelicReward(reward: RelicReward): void {
+  const all = getRelicRewards();
+  if (all.some((entry) => entry.id === reward.id)) return;
+
+  try {
+    localStorage.setItem(RELIC_REWARDS_KEY, JSON.stringify([...all, reward]));
+  } catch (error) {
+    console.error('Failed to save relic reward:', error);
+  }
 }
 
 // ── Legacy helpers ────────────────────────────────────────────────────────────

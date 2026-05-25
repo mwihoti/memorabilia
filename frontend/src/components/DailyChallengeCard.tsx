@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { ERA_LEVEL_CONFIGS, Difficulty } from '../types';
-import { loadDailyChallenge, getDailyChallengeConfig } from '../store/dailyChallenge';
+import { loadDailyChallenge, getDailyChallengeConfig, loadWeeklyChallenge, getWeeklyChallengeConfig } from '../store/dailyChallenge';
 
 interface DailyChallengeCardProps {
   onPlay: () => void;
+  onPlayWeekly: () => void;
 }
 
 function getTimeUntilMidnight(): string {
@@ -23,13 +24,17 @@ const ERA_INFO: Record<Difficulty, { icon: string; label: string }> = {
   [Difficulty.Easy]:   { icon: '🏺', label: 'Ancient Era'    },
   [Difficulty.Medium]: { icon: '⚔️', label: 'Medieval Times' },
   [Difficulty.Hard]:   { icon: '🚀', label: 'Modern Era'     },
+  [Difficulty.Expert]: { icon: '🛸', label: 'Future Nexus'   },
+  [Difficulty.Master]: { icon: '🐲', label: 'Mythic Vault'   },
 };
 
-export default function DailyChallengeCard({ onPlay }: DailyChallengeCardProps) {
+export default function DailyChallengeCard({ onPlay, onPlayWeekly }: DailyChallengeCardProps) {
   const { theme } = useGameStore();
   const [countdown, setCountdown] = useState(getTimeUntilMidnight());
   const [challenge] = useState(() => loadDailyChallenge());
   const [config]    = useState(() => getDailyChallengeConfig());
+  const [weeklyChallenge] = useState(() => loadWeeklyChallenge());
+  const [weeklyConfig] = useState(() => getWeeklyChallengeConfig());
 
   useEffect(() => {
     const id = setInterval(() => setCountdown(getTimeUntilMidnight()), 1000);
@@ -46,6 +51,8 @@ export default function DailyChallengeCard({ onPlay }: DailyChallengeCardProps) 
   const levelLabel = ERA_LEVEL_CONFIGS[config.difficulty][config.level - 1]?.label ?? `Level ${config.level}`;
   const todayStr   = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const completed  = challenge.completed;
+  const weeklyEraInfo = ERA_INFO[weeklyConfig.difficulty];
+  const weeklyLevelLabel = ERA_LEVEL_CONFIGS[weeklyConfig.difficulty][weeklyConfig.level - 1]?.label ?? `Level ${weeklyConfig.level}`;
 
   return (
     <div className={`rounded-2xl border-2 ${themeAccent.border} overflow-hidden shadow-lg mb-4`}>
@@ -102,9 +109,34 @@ export default function DailyChallengeCard({ onPlay }: DailyChallengeCardProps) 
             animate={{ boxShadow: ['0 0 0px rgba(0,0,0,0)', '0 0 14px rgba(251,191,36,0.35)', '0 0 0px rgba(0,0,0,0)'] }}
             transition={{ duration: 2, repeat: Infinity }}
           >
-            Play Now
+            Play Daily Seed
           </motion.button>
         )}
+
+        <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-white/40">Weekly Ladder</p>
+              <p className="text-sm font-bold text-white">{weeklyEraInfo.label} · {weeklyLevelLabel}</p>
+            </div>
+            <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/70">{weeklyConfig.weekKey}</span>
+          </div>
+          <p className="text-[11px] text-white/40">One fixed seed all week. Share the result and challenge friends.</p>
+          {weeklyChallenge.completed ? (
+            <div className="flex items-center gap-2 text-xs text-green-300">
+              <span>🏁</span>
+              <span>Best this week: {weeklyChallenge.score?.toLocaleString() ?? 0} pts</span>
+            </div>
+          ) : (
+            <motion.button
+              onClick={onPlayWeekly}
+              className="w-full py-2.5 rounded-xl font-bold text-sm bg-white/10 hover:bg-white/15 text-white transition-all"
+              whileTap={{ scale: 0.97 }}
+            >
+              Play Weekly Ladder
+            </motion.button>
+          )}
+        </div>
 
         {/* Countdown */}
         <p className="text-[10px] text-white/30 text-center">

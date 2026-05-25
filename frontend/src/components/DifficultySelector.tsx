@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useGameStore, Theme } from '../store/gameStore';
-import { Difficulty, GAME_CONFIGS } from '../types';
+import { Difficulty, DIFFICULTY_ORDER, GAME_CONFIGS, getDifficultyMeta } from '../types';
 import { hapticImpact } from '../telegram/telegram';
 
 interface DifficultySelectorProps {
@@ -32,29 +32,17 @@ export default function DifficultySelector({ onStart, onSwitchToLevels }: Diffic
     onStart();
   };
 
-  const difficulties = [
-    {
-      level: Difficulty.Easy,
-      name: 'Ancient Era',
-      emoji: '🏺',
-      description: '6 artifacts · 12 cards',
-      time: '~2 min',
-    },
-    {
-      level: Difficulty.Medium,
-      name: 'Medieval Times',
-      emoji: '⚔️',
-      description: '10 artifacts · 20 cards',
-      time: '~4 min',
-    },
-    {
-      level: Difficulty.Hard,
-      name: 'Modern Era',
-      emoji: '🚀',
-      description: '15 artifacts · 30 cards',
-      time: '~7 min',
-    },
-  ];
+  const difficulties = DIFFICULTY_ORDER.map((difficulty) => {
+    const meta = getDifficultyMeta(difficulty);
+    const config = GAME_CONFIGS[difficulty];
+    return {
+      level: difficulty,
+      name: meta.label,
+      emoji: meta.icon,
+      description: `${config.pairCount} artifacts · ${config.cardCount} cards`,
+      time: `~${Math.max(2, Math.ceil(config.cardCount / 5))} min`,
+    };
+  });
 
   const themeAccent = {
     museum: { text: 'text-amber-400', border: 'border-amber-500', ring: 'ring-amber-500/40', cta: 'from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600', ctaDisabled: 'bg-slate-700 text-slate-500', selected: 'border-amber-400 bg-amber-500/10' },
@@ -132,7 +120,7 @@ export default function DifficultySelector({ onStart, onSwitchToLevels }: Diffic
       </motion.div>
 
       {/* Difficulty cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         {difficulties.map((diff, i) => {
           const config = GAME_CONFIGS[diff.level];
           const isSelected = selectedDifficulty === diff.level;

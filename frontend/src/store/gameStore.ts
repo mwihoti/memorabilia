@@ -4,7 +4,7 @@ import {
   GameState, Difficulty, Card, PlayerStats, LeaderboardEntry, TelegramUser,
   GAME_CONFIGS, calculateStars, calculateStars as _calcStars,
   ComboState, LevelProgress, TimeMedal, ReplayMove, Achievement, DailyStreak,
-  ERA_LEVEL_CONFIGS, EraLevel,
+  ERA_LEVEL_CONFIGS, EraLevel, RunAnalytics, RelicReward,
   getComboMultiplier, getTimeMedal, getTimeBonusScore, getStreakMultiplier, isEraUnlocked,
 } from '../types';
 import { GameController } from '../dojo/gameController';
@@ -15,14 +15,92 @@ import {
 import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } from '../utils/sounds';
 import { cartridgeController } from '../cartridge/CartridgeController';
 import { mintScoreNFT } from '../cartridge/nftMinter';
-import { addGameScore, saveLevelProgress, getAllLevelProgress } from './playerStorage';
+import { addGameScore, saveLevelProgress, getAllLevelProgress, getRelicRewards, saveRelicReward } from './playerStorage';
 import { submitScore } from '../lib/api';
 import { checkAndUnlockAchievements } from './achievementStore';
 import { loadStreak, recordGamePlayed } from './streakStore';
-import { saveDailyChallenge } from './dailyChallenge';
+import { getDailyChallengeConfig, getWeeklyChallengeConfig, saveDailyChallenge, saveWeeklyChallenge } from './dailyChallenge';
 import { buildReplay, saveGhostReplayIfBest } from './ghostReplay';
 
 export type Theme = 'museum' | 'nature' | 'urban';
+
+type ChallengeMode = 'standard' | 'daily' | 'weekly';
+
+function buildLevelActions(era: Difficulty, level: number) {
+  return {
+    shields: era === Difficulty.Medium ? (level >= 4 ? 2 : 1) : 0,
+    hints: level >= 2 ? 1 : 0,
+    freezes: level >= 3 ? 1 : 0,
+    traps: level >= 4 ? 1 : 0,
+    multipliers: level >= 5 ? 1 : 0,
+  };
+}
+
+function findHintPair(cards: Card[]): number[] {
+  const unmatched = cards
+    .map((card, index) => ({ card, index }))
+    .filter(({ card }) => !card.is_matched);
+
+  for (let i = 0; i < unmatched.length; i++) {
+    for (let j = i + 1; j < unmatched.length; j++) {
+      if (unmatched[i].card.value === unmatched[j].card.value) {
+        return [unmatched[i].index, unmatched[j].index];
+      }
+    }
+  }
+
+  return [];
+}
+
+function reshuffleUnmatchedCards(cards: Card[]): Card[] {
+  const unmatched = cards
+    .map((card, index) => ({ card, index }))
+    .filter(({ card }) => !card.is_matched);
+
+  if (unmatched.length < 4) return cards;
+
+  const shuffled = [...unmatched].sort(() => Math.random() - 0.5);
+  const next = [...cards];
+
+  unmatched.forEach(({ index }, order) => {
+    const source = shuffled[order];
+    next[index] = { ...source.card, position: index };
+  });
+
+  return next;
+}
+
+function computeRunAnalytics(
+  elapsedSeconds: number,
+  levelConfig: EraLevel,
+  moves: number,
+  mismatches: number,
+  maxCombo: number,
+  counters: {
+    freezeBurstsUsed: number;
+    shieldBlocksUsed: number;
+    trapReshufflesUsed: number;
+    hintUses: number;
+    multiplierMatches: number;
+  }
+): RunAnalytics {
+  const threeStarCap = Math.floor(levelConfig.optimalMoves * 1.1);
+  return {
+    longestCombo: maxCombo,
+    mistakes: mismatches,
+    starGap: calculateStars(moves, levelConfig.optimalMoves) >= 3 ? 0 : 3 - calculateStars(moves, levelConfig.optimalMoves),
+    goldTimeDelta: elapsedSeconds - levelConfig.timeLimitGold,
+    silverTimeDelta: elapsedSeconds - levelConfig.timeLimitSilver,
+    bronzeTimeDelta: elapsedSeconds - levelConfig.timeLimitBronze,
+    moveGapToThreeStars: Math.max(0, moves - threeStarCap),
+    freezeBurstsUsed: counters.freezeBurstsUsed,
+    shieldBlocksUsed: counters.shieldBlocksUsed,
+    trapReshufflesUsed: counters.trapReshufflesUsed,
+    hintUses: counters.hintUses,
+    multiplierMatches: counters.multiplierMatches,
+    bossLevel: !!levelConfig.boss,
+  };
+}
 
 interface GameStore {
   // User & Account
@@ -67,9 +145,28 @@ interface GameStore {
   replayMoves: ReplayMove[];
   gameStartMs: number;
   isDailyChallenge: boolean;
+  challengeMode: ChallengeMode;
+  challengeSeed: number | null;
   levelProgress: LevelProgress[];
   streak: DailyStreak;
   newlyUnlockedAchievements: Achievement[];
+  relicRewards: RelicReward[];
+  lastRunAnalytics: RunAnalytics | null;
+  shieldCharges: number;
+  shieldBlocksUsed: number;
+  hintCharges: number;
+  hintUses: number;
+  hintPairIndices: number[];
+  freezeCharges: number;
+  freezeBurstsUsed: number;
+  trapCharges: number;
+  trapReshufflesUsed: number;
+  multiplierCharges: number;
+  pendingMultiplier: number;
+  multiplierMatches: number;
+  hiddenCardIndices: number[];
+  pulseScanRow: number | null;
+  boardRotationDeg: number;
 
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
@@ -96,8 +193,16 @@ interface GameStore {
   // ── Level System Actions ───────────────────────────────────────────────────
   setCurrentLevel: (era: Difficulty, level: number) => void;
   startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean) => Promise<void>;
+  startWeeklyChallenge: () => Promise<void>;
   clearNewAchievements: () => void;
   loadLevelProgress: () => void;
+  useHint: () => void;
+  useFreeze: () => void;
+  useTrap: () => void;
+  armMultiplier: () => void;
+  triggerSandstorm: () => void;
+  triggerPulseScan: () => void;
+  triggerBoardEvent: () => void;
 
   // UI Actions
   setSelectedDifficulty: (difficulty: Difficulty | null) => void;
@@ -148,9 +253,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
   replayMoves: [],
   gameStartMs: 0,
   isDailyChallenge: false,
+  challengeMode: 'standard',
+  challengeSeed: null,
   levelProgress: getAllLevelProgress(),
   streak: loadStreak(),
   newlyUnlockedAchievements: [],
+  relicRewards: getRelicRewards(),
+  lastRunAnalytics: null,
+  shieldCharges: 0,
+  shieldBlocksUsed: 0,
+  hintCharges: 0,
+  hintUses: 0,
+  hintPairIndices: [],
+  freezeCharges: 0,
+  freezeBurstsUsed: 0,
+  trapCharges: 0,
+  trapReshufflesUsed: 0,
+  multiplierCharges: 0,
+  pendingMultiplier: 1,
+  multiplierMatches: 0,
+  hiddenCardIndices: [],
+  pulseScanRow: null,
+  boardRotationDeg: 0,
 
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
@@ -285,7 +409,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       
       // Get era-specific emojis for this game
       const eraEmojis = getEmojisForDifficulty(difficulty);
-      const totalPairs = difficulty === Difficulty.Easy ? 4 : difficulty === Difficulty.Medium ? 8 : 12;
+      const totalPairs = GAME_CONFIGS[difficulty].pairCount;
       const selectedEmojis = eraEmojis.slice(0, totalPairs);
       
       // Create initial game state
@@ -414,10 +538,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const newMoves = currentGame.moves + 1;
 
         // ── Combo tracking (demo mode only) ───────────────────────────────
-        const { combo, maxCombo: prevMaxCombo, replayMoves, gameStartMs, currentEra, currentLevel } = get();
+        const {
+          combo, maxCombo: prevMaxCombo, replayMoves, gameStartMs, currentEra, currentLevel,
+          pendingMultiplier, multiplierMatches,
+        } = get();
         const newComboCount  = !gameController ? combo.count + 1 : combo.count;
         const newMultiplier  = !gameController ? getComboMultiplier(newComboCount) : combo.multiplier;
         const newMaxCombo    = Math.max(prevMaxCombo, newComboCount);
+        const appliedMultiplier = pendingMultiplier > 1 ? pendingMultiplier : 1;
 
         // Record replay moves
         const nowMs = Date.now();
@@ -430,7 +558,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
           : replayMoves;
 
         if (!gameController) {
-          set({ combo: { count: newComboCount, multiplier: newMultiplier }, maxCombo: newMaxCombo, replayMoves: newReplayMoves });
+          set({
+            combo: { count: newComboCount, multiplier: newMultiplier },
+            maxCombo: newMaxCombo,
+            replayMoves: newReplayMoves,
+            pendingMultiplier: 1,
+            multiplierMatches: pendingMultiplier > 1 ? multiplierMatches + 1 : multiplierMatches,
+          });
         }
 
         // Calculate score
@@ -445,7 +579,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           cards: updatedCards,
           matched_count: newMatchedCount,
           moves: newMoves,
-          score,
+          score: Math.floor(score * appliedMultiplier),
         };
 
         set({
@@ -467,7 +601,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
           // ── Level-aware completion (demo mode) ─────────────────────────
           if (!gameController && currentEra !== null) {
-            const elapsedSeconds = Math.floor((completedAt - currentGame.started_at) / 1000);
+            const elapsedSeconds = Math.floor((completedAt - finalGame.started_at) / 1000);
             const levelConfig: EraLevel = ERA_LEVEL_CONFIGS[currentEra][currentLevel - 1];
             const medal    = getTimeMedal(elapsedSeconds, levelConfig);
             const timeBonus = getTimeBonusScore(elapsedSeconds, levelConfig);
@@ -493,9 +627,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const updatedLevelProgress = getAllLevelProgress();
 
             // Daily challenge
-            const { isDailyChallenge } = get();
+            const { isDailyChallenge, challengeMode } = get();
             if (isDailyChallenge) {
               saveDailyChallenge(levelScore, medal);
+            }
+            if (challengeMode === 'weekly') {
+              saveWeeklyChallenge(levelScore, medal);
             }
 
             // Ghost replay
@@ -525,17 +662,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
               isDailyChallenge,
             });
 
+            if (levelConfig.relic && stars === 3 && medal === 'gold') {
+              saveRelicReward({
+                id: `${currentEra}-${currentLevel}-${levelConfig.relic}`.toLowerCase().replace(/\s+/g, '-'),
+                era: currentEra,
+                name: levelConfig.relic,
+                icon: currentEra === Difficulty.Easy ? '☀️' : currentEra === Difficulty.Medium ? '👑' : '🌌',
+                unlockedAt: completedAt,
+                condition: 'Gold medal and 3 stars on the boss level',
+              });
+            }
+
+            const analytics = computeRunAnalytics(elapsedSeconds, levelConfig, finalGame.moves, get().mismatches, finalMaxCombo, {
+              freezeBurstsUsed: get().freezeBurstsUsed,
+              shieldBlocksUsed: get().shieldBlocksUsed,
+              trapReshufflesUsed: get().trapReshufflesUsed,
+              hintUses: get().hintUses,
+              multiplierMatches: get().multiplierMatches,
+            });
+
             set({
               levelProgress:              updatedLevelProgress,
               streak:                     updatedStreak,
               newlyUnlockedAchievements:  newAchievements,
+              relicRewards:               getRelicRewards(),
+              lastRunAnalytics:           analytics,
             });
           }
 
           // Save score to local storage
           const { telegramUser, playerName: storedName } = get();
           if (telegramUser) {
-            const elapsedTime = Math.floor((completedAt - currentGame.started_at) / 1000);
+            const elapsedTime = Math.floor((completedAt - finalGame.started_at) / 1000);
             const playerName = storedName || telegramUser.first_name || 'Anonymous Player';
 
             console.log('🎯 Game Completed - Saving Score:', {
@@ -598,10 +756,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
         // Combo reset and mismatch tracking (demo mode only)
         if (!gameController) {
-          const { mismatches } = get();
+          const { mismatches, shieldCharges, shieldBlocksUsed, currentEra, currentLevel } = get();
+          const shieldAbsorbed = shieldCharges > 0;
           set({
-            combo:      { count: 0, multiplier: 1 },
-            mismatches: mismatches + 1,
+            combo:            { count: 0, multiplier: 1 },
+            mismatches:       shieldAbsorbed ? mismatches : mismatches + 1,
+            shieldCharges:    shieldAbsorbed ? shieldCharges - 1 : shieldCharges,
+            shieldBlocksUsed: shieldAbsorbed ? shieldBlocksUsed + 1 : shieldBlocksUsed,
+            boardRotationDeg: currentLevel >= 4 ? get().boardRotationDeg + (currentEra >= Difficulty.Hard ? 180 : 90) : get().boardRotationDeg,
+            currentGame: currentLevel >= 4
+              ? { ...currentGame, cards: reshuffleUnmatchedCards(currentGame.cards) }
+              : currentGame,
           });
         }
 
@@ -610,8 +775,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           set({
             flippedCards: [],
             isChecking: false,
+            hintPairIndices: [],
             currentGame: {
-              ...currentGame,
+              ...get().currentGame!,
               moves: currentGame.moves + 1,
             },
           });
@@ -653,6 +819,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedDifficulty: null,
       showWinModal: false,
       isChecking: false,
+      challengeMode: 'standard',
+      challengeSeed: null,
+      hintPairIndices: [],
+      hiddenCardIndices: [],
+      pulseScanRow: null,
+      boardRotationDeg: 0,
+      pendingMultiplier: 1,
     });
   },
   
@@ -665,7 +838,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false) => {
     set({ isGameLoading: true });
     try {
-      const newGame = createLevelGame(era, level);
+      const actions = buildLevelActions(era, level);
+      const dailySeed = isDailyChallenge ? getDailyChallengeConfig().seed : undefined;
+      const newGame = createLevelGame(era, level, dailySeed);
       set({
         currentGame:               newGame,
         selectedDifficulty:        era,
@@ -680,7 +855,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
         replayMoves:               [],
         gameStartMs:               Date.now(),
         isDailyChallenge,
+        challengeMode:             isDailyChallenge ? 'daily' : 'standard',
+        challengeSeed:             dailySeed ?? null,
         newlyUnlockedAchievements: [],
+        lastRunAnalytics:          null,
+        shieldCharges:             actions.shields,
+        shieldBlocksUsed:          0,
+        hintCharges:               actions.hints,
+        hintUses:                  0,
+        hintPairIndices:           [],
+        freezeCharges:             actions.freezes,
+        freezeBurstsUsed:          0,
+        trapCharges:               actions.traps,
+        trapReshufflesUsed:        0,
+        multiplierCharges:         actions.multipliers,
+        pendingMultiplier:         1,
+        multiplierMatches:         0,
+        hiddenCardIndices:         [],
+        pulseScanRow:              null,
+        boardRotationDeg:          0,
       });
     } catch (error) {
       console.error('Failed to start level game:', error);
@@ -688,10 +881,139 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
+  startWeeklyChallenge: async () => {
+    set({ isGameLoading: true });
+    try {
+      const config = getWeeklyChallengeConfig();
+      const actions = buildLevelActions(config.difficulty, config.level);
+      const newGame = createLevelGame(config.difficulty, config.level, config.seed);
+      set({
+        currentGame:               newGame,
+        selectedDifficulty:        config.difficulty,
+        flippedCards:              [],
+        isGameLoading:             false,
+        showWinModal:              false,
+        currentEra:                config.difficulty,
+        currentLevel:              config.level,
+        combo:                     { count: 0, multiplier: 1 },
+        mismatches:                0,
+        maxCombo:                  0,
+        replayMoves:               [],
+        gameStartMs:               Date.now(),
+        isDailyChallenge:          false,
+        challengeMode:             'weekly',
+        challengeSeed:             config.seed,
+        newlyUnlockedAchievements: [],
+        lastRunAnalytics:          null,
+        shieldCharges:             actions.shields,
+        shieldBlocksUsed:          0,
+        hintCharges:               actions.hints,
+        hintUses:                  0,
+        hintPairIndices:           [],
+        freezeCharges:             actions.freezes,
+        freezeBurstsUsed:          0,
+        trapCharges:               actions.traps,
+        trapReshufflesUsed:        0,
+        multiplierCharges:         actions.multipliers,
+        pendingMultiplier:         1,
+        multiplierMatches:         0,
+        hiddenCardIndices:         [],
+        pulseScanRow:              null,
+        boardRotationDeg:          0,
+      });
+    } catch (error) {
+      console.error('Failed to start weekly challenge:', error);
+      set({ isGameLoading: false });
+    }
+  },
+
   clearNewAchievements: () => set({ newlyUnlockedAchievements: [] }),
 
   loadLevelProgress: () => {
-    set({ levelProgress: getAllLevelProgress(), streak: loadStreak() });
+    set({ levelProgress: getAllLevelProgress(), streak: loadStreak(), relicRewards: getRelicRewards() });
+  },
+
+  useHint: () => {
+    const { currentGame, hintCharges, isChecking } = get();
+    if (!currentGame || hintCharges <= 0 || isChecking) return;
+    const pair = findHintPair(currentGame.cards);
+    if (pair.length !== 2) return;
+    set((state) => ({
+      hintCharges: state.hintCharges - 1,
+      hintUses: state.hintUses + 1,
+      hintPairIndices: pair,
+    }));
+    setTimeout(() => set({ hintPairIndices: [] }), 1800);
+  },
+
+  useFreeze: () => {
+    const { currentGame, freezeCharges } = get();
+    if (!currentGame || freezeCharges <= 0) return;
+    set((state) => ({
+      currentGame: { ...state.currentGame!, started_at: state.currentGame!.started_at + 5000 },
+      freezeCharges: state.freezeCharges - 1,
+      freezeBurstsUsed: state.freezeBurstsUsed + 1,
+    }));
+  },
+
+  useTrap: () => {
+    const { currentGame, trapCharges, isChecking } = get();
+    if (!currentGame || trapCharges <= 0 || isChecking) return;
+    set((state) => ({
+      currentGame: { ...state.currentGame!, cards: reshuffleUnmatchedCards(state.currentGame!.cards) },
+      trapCharges: state.trapCharges - 1,
+      trapReshufflesUsed: state.trapReshufflesUsed + 1,
+      flippedCards: [],
+      hintPairIndices: [],
+    }));
+  },
+
+  armMultiplier: () => {
+    const { multiplierCharges, pendingMultiplier } = get();
+    if (multiplierCharges <= 0 || pendingMultiplier > 1) return;
+    set((state) => ({
+      multiplierCharges: state.multiplierCharges - 1,
+      pendingMultiplier: 2,
+    }));
+  },
+
+  triggerSandstorm: () => {
+    const { currentGame, currentEra, isChecking } = get();
+    if (!currentGame || currentEra !== Difficulty.Easy || isChecking) return;
+    const candidates = currentGame.cards
+      .map((card, index) => ({ card, index }))
+      .filter(({ card, index }) => !card.is_matched && !get().flippedCards.includes(index))
+      .map(({ index }) => index)
+      .slice(0, Math.min(6, currentGame.cards.length));
+    if (!candidates.length) return;
+    const hidden = [...candidates].sort(() => Math.random() - 0.5).slice(0, Math.min(4, candidates.length));
+    set({ hiddenCardIndices: hidden });
+    setTimeout(() => set({ hiddenCardIndices: [] }), 1800);
+  },
+
+  triggerPulseScan: () => {
+    const { currentGame, currentEra } = get();
+    if (!currentGame || currentEra === null || currentEra < Difficulty.Hard) return;
+    const columns = currentGame.cards.length <= 16 ? 4 : 6;
+    const rows = Math.ceil(currentGame.cards.length / columns);
+    const row = Math.floor(Math.random() * rows);
+    set({ pulseScanRow: row });
+    setTimeout(() => set({ pulseScanRow: null }), 1200);
+  },
+
+  triggerBoardEvent: () => {
+    const { currentGame, currentEra, currentLevel, isChecking } = get();
+    if (!currentGame || isChecking) return;
+    const isBoss = !!ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel - 1]?.boss;
+    const shouldReshuffle = isBoss || currentLevel >= 4;
+    set((state) => ({
+      currentGame: shouldReshuffle
+        ? { ...state.currentGame!, cards: reshuffleUnmatchedCards(state.currentGame!.cards) }
+        : state.currentGame,
+      boardRotationDeg: state.boardRotationDeg + (currentEra >= Difficulty.Hard ? 180 : 90),
+      flippedCards: [],
+      hintPairIndices: [],
+    }));
   },
 
   // UI Actions
@@ -702,4 +1024,3 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setPlayerStats: (stats) => set({ playerStats: stats }),
   setLeaderboard: (entries) => set({ leaderboard: entries }),
 }));
-

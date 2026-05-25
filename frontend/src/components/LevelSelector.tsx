@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import {
   Difficulty, ERA_LEVEL_CONFIGS, EraLevel, LevelProgress,
-  isEraUnlocked, isLevelUnlocked, TimeMedal,
+  DIFFICULTY_ORDER, getDifficultyMeta, isEraUnlocked, isLevelUnlocked, TimeMedal,
 } from '../types';
 import { loadDailyChallenge, getDailyChallengeConfig, isDailyChallengeCompleted } from '../store/dailyChallenge';
 import { hapticImpact } from '../telegram/telegram';
@@ -13,6 +13,7 @@ import DailyChallengeCard from './DailyChallengeCard';
 
 interface LevelSelectorProps {
   onStart: (era: Difficulty, level: number, isDailyChallenge?: boolean) => void;
+  onStartWeekly: () => void;
 }
 
 // ── Era definitions ────────────────────────────────────────────────────────────
@@ -26,27 +27,24 @@ interface EraConfig {
 }
 
 const ERAS: EraConfig[] = [
-  {
-    id:       Difficulty.Easy,
-    label:    'Ancient Era',
-    icon:     '🏺',
-    gradient: 'from-amber-700/50 to-orange-800/50',
-    lockedBy: '',
-  },
-  {
-    id:       Difficulty.Medium,
-    label:    'Medieval Times',
-    icon:     '⚔️',
-    gradient: 'from-slate-700/50 to-indigo-800/50',
-    lockedBy: 'Ancient Era Level 3',
-  },
-  {
-    id:       Difficulty.Hard,
-    label:    'Modern Era',
-    icon:     '🚀',
-    gradient: 'from-cyan-700/50 to-purple-800/50',
-    lockedBy: 'Medieval Times Level 3',
-  },
+  ...DIFFICULTY_ORDER.map((difficulty, index) => {
+    const meta = getDifficultyMeta(difficulty);
+    const gradients = [
+      'from-amber-700/50 to-orange-800/50',
+      'from-slate-700/50 to-indigo-800/50',
+      'from-cyan-700/50 to-purple-800/50',
+      'from-violet-700/50 to-fuchsia-800/50',
+      'from-rose-700/50 to-red-900/50',
+    ];
+
+    return {
+      id: difficulty,
+      label: meta.label,
+      icon: meta.icon,
+      gradient: gradients[index] ?? gradients[gradients.length - 1],
+      lockedBy: index === 0 ? '' : `${getDifficultyMeta(DIFFICULTY_ORDER[index - 1]).label} Level 4`,
+    };
+  }),
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -123,6 +121,10 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
       {/* Card count */}
       <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
 
+      {levelConfig.boss && (
+        <p className="text-[9px] lg:text-[10px] text-amber-300 mb-1">Boss Level · {levelConfig.relic} reward</p>
+      )}
+
       {/* Medal + stars row */}
       {!locked && (
         <div className="flex items-center gap-2 mb-1.5">
@@ -136,6 +138,9 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
         <div className="space-y-0.5">
           <p className="text-[9px] lg:text-[10px] text-white/30">{previewSec}</p>
           <p className="text-[9px] lg:text-[10px] text-white/30">🥇 &lt; {levelConfig.timeLimitGold}s</p>
+          {levelConfig.mechanics?.[0] && (
+            <p className="text-[9px] lg:text-[10px] text-white/30 truncate">{levelConfig.mechanics[0]}</p>
+          )}
         </div>
       )}
 
@@ -148,8 +153,8 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function LevelSelector({ onStart }: LevelSelectorProps) {
-  const { theme, levelProgress } = useGameStore();
+export default function LevelSelector({ onStart, onStartWeekly }: LevelSelectorProps) {
+  const { theme, levelProgress, relicRewards } = useGameStore();
   const [expandedEra, setExpandedEra] = useState<Difficulty | null>(null);
 
   const themeAccent = {
@@ -179,6 +184,11 @@ export default function LevelSelector({ onStart }: LevelSelectorProps) {
     onStart(dailyConfig.difficulty, dailyConfig.level, true);
   };
 
+  const handleWeeklyPlay = () => {
+    hapticImpact('medium');
+    onStartWeekly();
+  };
+
   return (
     <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto">
       {/* Header */}
@@ -199,7 +209,27 @@ export default function LevelSelector({ onStart }: LevelSelectorProps) {
       <StreakBanner />
 
       {/* Daily Challenge */}
-      <DailyChallengeCard onPlay={handleDailyPlay} />
+      <DailyChallengeCard onPlay={handleDailyPlay} onPlayWeekly={handleWeeklyPlay} />
+
+      {relicRewards.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-white/40">Relic Vault</p>
+              <p className="text-sm font-bold text-white">Mastery rewards you have unlocked</p>
+            </div>
+            <span className={`text-xs font-semibold ${themeAccent.text}`}>{relicRewards.length} relics</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {relicRewards.map((relic) => (
+              <div key={relic.id} className="px-3 py-2 rounded-xl border border-white/10 bg-black/10 text-xs text-white/75">
+                <span className="mr-1.5">{relic.icon}</span>
+                <span className="font-semibold text-white">{relic.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Era cards */}
       <div className="space-y-3">

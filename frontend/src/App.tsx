@@ -3,7 +3,7 @@ import { useGameStore } from './store/gameStore';
 import { setupDojo, createBurnerAccount } from './dojo/setup';
 import { createGameController } from './dojo/gameController';
 import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp } from './telegram/telegram';
-import { GhostReplay, Difficulty } from './types';
+import { GhostReplay, Difficulty, getMaxLevelForEra } from './types';
 import { loadGhostReplay } from './store/ghostReplay';
 
 // Components
@@ -41,6 +41,7 @@ function App() {
     resetGame,
     theme,
     startLevelGame,
+    startWeeklyChallenge,
     currentEra,
     currentLevel,
     newlyUnlockedAchievements,
@@ -125,7 +126,7 @@ function App() {
   const handleNextLevel = async () => {
     if (currentEra === null) return;
     const nextLevel = currentLevel + 1;
-    if (nextLevel > 5) return;
+    if (nextLevel > getMaxLevelForEra(currentEra)) return;
     resetGame();
     await startLevelGame(currentEra, nextLevel, false);
     setScreen('game');
@@ -236,7 +237,10 @@ function App() {
 
           {/* New level-select screen — primary entry point */}
           {screen === 'level-select' && (
-            <LevelSelector onStart={handleLevelStart} />
+            <LevelSelector onStart={handleLevelStart} onStartWeekly={async () => {
+              await startWeeklyChallenge();
+              setScreen('game');
+            }} />
           )}
 
           {/* Legacy difficulty screen — kept for blockchain mode backward compat */}
@@ -263,7 +267,7 @@ function App() {
         {showWinModal && (
           <WinModal
             onClose={handleWinModalClose}
-            onNextLevel={currentEra !== null && currentLevel < 5 ? handleNextLevel : undefined}
+            onNextLevel={currentEra !== null && currentLevel < getMaxLevelForEra(currentEra) ? handleNextLevel : undefined}
             onShowGhostReplay={handleShowGhostReplay}
           />
         )}

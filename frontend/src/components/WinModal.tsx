@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { useGameStore } from '../store/gameStore';
-import { calculateStars, calculateGrade, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getTimeMedal } from '../types';
+import { calculateStars, calculateGrade, DIFFICULTY_ORDER, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getMaxLevelForEra, getMovesNeededForThreeStars, getTimeMedal, getTotalLevelCount } from '../types';
 import { hapticNotification } from '../telegram/telegram';
 import { isScoreEligibleForNFT } from '../cartridge/config';
 import { fetchPlayerStats } from '../lib/api';
@@ -39,6 +39,10 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     streak,
     levelProgress,
     newlyUnlockedAchievements,
+    relicRewards,
+    lastRunAnalytics,
+    challengeMode,
+    challengeSeed,
   } = useGameStore();
 
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
@@ -74,9 +78,8 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
   const canMintNFT = isEligibleForNFT && isWalletConnected && !mintTxHash;
 
   const displayName = playerName || telegramUser?.first_name || 'Curator';
-  const diffLabel =
-    currentGame.difficulty === 1 ? '🏺 Ancient Era' :
-    currentGame.difficulty === 2 ? '⚔️ Medieval Times' : '🚀 Modern Era';
+  const difficultyMeta = getDifficultyMeta(currentGame.difficulty);
+  const diffLabel = `${difficultyMeta.icon} ${difficultyMeta.label}`;
 
   // ── Level mode extras ─────────────────────────────────────────────────────
   const levelConfig = currentEra !== null
@@ -91,25 +94,24 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     : null;
 
   // Next level info
-  const nextLevelConfig = levelConfig && currentLevel < 5
+  const nextLevelConfig = levelConfig && currentEra !== null && currentLevel < getMaxLevelForEra(currentEra)
     ? ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel] ?? null
     : null;
 
-  // Check if ALL 15 levels across all 3 eras are complete
-  const totalLevels = 15; // 3 eras × 5 levels
+  const totalLevels = getTotalLevelCount();
   const allLevelsComplete = levelProgress.filter((lp) => lp.completed).length >= totalLevels;
 
-  // Era completion check: just completed level 3 of an era
+  const eraUnlockCheckpoint = currentEra !== null ? Math.min(4, getMaxLevelForEra(currentEra)) : 0;
   const justCompletedEraLevel3 =
     levelConfig !== null &&
-    currentLevel === 3 &&
+    currentLevel === eraUnlockCheckpoint &&
     levelProgress.some(
-      (lp) => lp.era === currentEra && lp.level === 3 && lp.completed
+      (lp) => lp.era === currentEra && lp.level === eraUnlockCheckpoint && lp.completed
     );
 
-  const nextEraLabel =
-    currentGame.difficulty === 1 ? '⚔️ Medieval Times' :
-    currentGame.difficulty === 2 ? '🚀 Modern Era' : null;
+  const currentDifficultyIndex = DIFFICULTY_ORDER.indexOf(currentGame.difficulty);
+  const nextEra = currentDifficultyIndex >= 0 ? DIFFICULTY_ORDER[currentDifficultyIndex + 1] : undefined;
+  const nextEraLabel = nextEra ? `${getDifficultyMeta(nextEra).icon} ${getDifficultyMeta(nextEra).label}` : null;
 
   // ── Streak display ────────────────────────────────────────────────────────
   const streakMessage =
@@ -127,9 +129,16 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
 
   const handleShare = async () => {
     const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+    const challengeLine =
+      challengeMode === 'weekly'
+        ? `Weekly ladder seed ${challengeSeed}`
+        : challengeMode === 'daily'
+        ? `Daily challenge seed ${challengeSeed}`
+        : null;
     const shareText =
       `${starStr} I scored ${currentGame.score.toLocaleString()} pts on Memorabilia!\n` +
       `${diffLabel} · ${currentGame.moves} moves · ${formatTime(elapsedTime)}\n` +
+      `${challengeLine ? `${challengeLine}\n` : ''}` +
       `Play now 👉 https://t.me/enter_memorabilia_musem_bot`;
 
     // Try native Web Share first (works in Telegram WebApp on mobile)
@@ -176,6 +185,11 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
       setScoreSubmitted(true);
     }
   };
+
+  const newestRelic = levelConfig?.relic
+    ? relicRewards.find((relic) => relic.name === levelConfig.relic)
+    : null;
+  const threeStarMoveCap = getMovesNeededForThreeStars(config.optimalMoves);
 
   return (
     <AnimatePresence>
@@ -309,6 +323,60 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                 ))}
               </div>
 
+              {lastRunAnalytics && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-white">Run Breakdown</p>
+                    {lastRunAnalytics.bossLevel && (
+                      <span className="text-[10px] uppercase tracking-widest text-amber-300">Boss Clear</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl bg-black/10 px-3 py-2">
+                      <div className="text-white font-semibold">Longest Combo</div>
+                      <div className="text-white/50">{lastRunAnalytics.longestCombo} chain</div>
+                    </div>
+                    <div className="rounded-xl bg-black/10 px-3 py-2">
+                      <div className="text-white font-semibold">Mistakes</div>
+                      <div className="text-white/50">{lastRunAnalytics.mistakes} total</div>
+                    </div>
+                    <div className="rounded-xl bg-black/10 px-3 py-2">
+                      <div className="text-white font-semibold">Gold Pace</div>
+                      <div className="text-white/50">
+                        {lastRunAnalytics.goldTimeDelta <= 0
+                          ? `${Math.abs(lastRunAnalytics.goldTimeDelta)}s inside gold`
+                          : `${lastRunAnalytics.goldTimeDelta}s slower than gold`}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-black/10 px-3 py-2">
+                      <div className="text-white font-semibold">3-Star Pace</div>
+                      <div className="text-white/50">
+                        {currentGame.moves <= threeStarMoveCap
+                          ? `${threeStarMoveCap - currentGame.moves} moves to spare`
+                          : `${currentGame.moves - threeStarMoveCap} moves over cap`}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[11px] text-white/60">
+                    <span>💡 {lastRunAnalytics.hintUses} hints</span>
+                    <span>❄️ {lastRunAnalytics.freezeBurstsUsed} freezes</span>
+                    <span>🌀 {lastRunAnalytics.trapReshufflesUsed} reshuffles</span>
+                    <span>🛡️ {lastRunAnalytics.shieldBlocksUsed} shield blocks</span>
+                    <span>⚡ {lastRunAnalytics.multiplierMatches} boosted matches</span>
+                  </div>
+                </div>
+              )}
+
+              {lastRunAnalytics && (
+                <div className="rounded-xl bg-sky-500/10 border border-sky-500/20 px-4 py-3 text-sm text-sky-200">
+                  {lastRunAnalytics.goldTimeDelta > 0
+                    ? `Almost there: ${lastRunAnalytics.goldTimeDelta}s faster would have earned gold.`
+                    : lastRunAnalytics.moveGapToThreeStars > 0
+                    ? `Almost there: ${lastRunAnalytics.moveGapToThreeStars} fewer moves would have secured 3 stars.`
+                    : 'Clean run. Push for a faster finish to widen your margin.'}
+                </div>
+              )}
+
               {/* Streak info */}
               {streakMessage && (
                 <motion.div
@@ -339,6 +407,20 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                       </li>
                     ))}
                   </ul>
+                </motion.div>
+              )}
+
+              {newestRelic && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.68 }}
+                  className="px-4 py-3 bg-violet-500/10 border border-violet-500/25 rounded-xl"
+                >
+                  <p className="text-sm font-bold text-violet-300">Relic Unlocked</p>
+                  <p className="text-xs text-white/70 mt-1">
+                    {newestRelic.icon} {newestRelic.name} added to your vault.
+                  </p>
                 </motion.div>
               )}
 
@@ -474,7 +556,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                 >
                   <div className="text-3xl">🎉</div>
                   <p className="text-amber-300 font-extrabold text-base">You've Mastered All Levels!</p>
-                  <p className="text-white/60 text-xs">You completed all 15 levels across every era. More games are coming — stay tuned!</p>
+                  <p className="text-white/60 text-xs">You completed all {totalLevels} levels across every era. More games are coming — stay tuned!</p>
                   <p className="text-white/40 text-[10px] italic">🚀 New challenges coming soon…</p>
                 </motion.div>
               )}

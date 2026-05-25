@@ -17,6 +17,66 @@ export enum Difficulty {
   Easy = 1,
   Medium = 2,
   Hard = 3,
+  Expert = 4,
+  Master = 5,
+}
+
+export interface DifficultyMeta {
+  id: Difficulty;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  legacyDescription: string;
+}
+
+export const DIFFICULTY_ORDER: Difficulty[] = [
+  Difficulty.Easy,
+  Difficulty.Medium,
+  Difficulty.Hard,
+  Difficulty.Expert,
+  Difficulty.Master,
+];
+
+export const DIFFICULTY_META: Record<Difficulty, DifficultyMeta> = {
+  [Difficulty.Easy]: {
+    id: Difficulty.Easy,
+    label: 'Ancient Era',
+    shortLabel: 'Ancient',
+    icon: '🏺',
+    legacyDescription: '6 artifacts · 12 cards',
+  },
+  [Difficulty.Medium]: {
+    id: Difficulty.Medium,
+    label: 'Medieval Times',
+    shortLabel: 'Medieval',
+    icon: '⚔️',
+    legacyDescription: '10 artifacts · 20 cards',
+  },
+  [Difficulty.Hard]: {
+    id: Difficulty.Hard,
+    label: 'Modern Era',
+    shortLabel: 'Modern',
+    icon: '🚀',
+    legacyDescription: '15 artifacts · 30 cards',
+  },
+  [Difficulty.Expert]: {
+    id: Difficulty.Expert,
+    label: 'Future Nexus',
+    shortLabel: 'Future',
+    icon: '🛸',
+    legacyDescription: '16 artifacts · 32 cards',
+  },
+  [Difficulty.Master]: {
+    id: Difficulty.Master,
+    label: 'Mythic Vault',
+    shortLabel: 'Mythic',
+    icon: '🐲',
+    legacyDescription: '16 artifacts · 32 cards',
+  },
+};
+
+export function getDifficultyMeta(difficulty: Difficulty): DifficultyMeta {
+  return DIFFICULTY_META[difficulty];
 }
 
 export interface GameState {
@@ -201,6 +261,18 @@ export const GAME_CONFIGS: Record<Difficulty, GameConfig> = {
     pairCount: 15,
     optimalMoves: 30,
   },
+  [Difficulty.Expert]: {
+    difficulty: Difficulty.Expert,
+    cardCount: 32,
+    pairCount: 16,
+    optimalMoves: 32,
+  },
+  [Difficulty.Master]: {
+    difficulty: Difficulty.Master,
+    cardCount: 32,
+    pairCount: 16,
+    optimalMoves: 32,
+  },
 };
 
 // Star rating calculation
@@ -246,6 +318,11 @@ export interface EraLevel {
   timeLimitSilver: number;
   timeLimitBronze: number;
   label: string;
+  mechanics?: string[];
+  boss?: boolean;
+  relic?: string;
+  minimumPairDistance?: number;
+  pattern?: 'zigzag' | 'columns' | 'spiral';
 }
 
 export type TimeMedal = 'gold' | 'silver' | 'bronze' | 'none';
@@ -313,22 +390,115 @@ export interface GhostReplay {
   emojis?: string[]; // actual emoji arrangement from the best run
 }
 
+export interface WeeklyChallenge {
+  weekKey: string; // YYYY-Www
+  seed: number;
+  difficulty: Difficulty;
+  level: number;
+  completed: boolean;
+  score?: number;
+  medal?: TimeMedal;
+}
+
+export interface RelicReward {
+  id: string;
+  era: Difficulty;
+  name: string;
+  icon: string;
+  unlockedAt: number;
+  condition: string;
+}
+
+export interface RunAnalytics {
+  longestCombo: number;
+  mistakes: number;
+  starGap: number;
+  goldTimeDelta: number;
+  silverTimeDelta: number;
+  bronzeTimeDelta: number;
+  moveGapToThreeStars: number;
+  freezeBurstsUsed: number;
+  shieldBlocksUsed: number;
+  trapReshufflesUsed: number;
+  hintUses: number;
+  multiplierMatches: number;
+  bossLevel: boolean;
+}
+
 // ── Era Level Configs ─────────────────────────────────────────────────────────
 
 const ERA_LEVEL_LABELS: Record<Difficulty, string[]> = {
-  [Difficulty.Easy]:   ['Apprentice', 'Scholar', 'Sage', 'Elder', 'Oracle'],
-  [Difficulty.Medium]: ['Squire', 'Knight', 'Baron', 'Count', 'Lord'],
-  [Difficulty.Hard]:   ['Intern', 'Engineer', 'Senior', 'Principal', 'Legend'],
+  [Difficulty.Easy]:   ['Apprentice', 'Scholar', 'Sage', 'Elder', 'Oracle', 'Curator', 'Chronomancer'],
+  [Difficulty.Medium]: ['Squire', 'Knight', 'Baron', 'Count', 'Lord', 'Marshal', 'Sovereign'],
+  [Difficulty.Hard]:   ['Intern', 'Engineer', 'Senior', 'Principal', 'Legend', 'Architect', 'Visionary'],
+  [Difficulty.Expert]: ['Scout', 'Navigator', 'Cipher', 'Operator', 'Admiral', 'Singularity', 'Overseer'],
+  [Difficulty.Master]: ['Seeker', 'Warden', 'Invoker', 'Titan', 'Dragonheart', 'Ascendant', 'Eternal'],
 };
 
 function buildEraLevels(era: Difficulty): EraLevel[] {
   const labels = ERA_LEVEL_LABELS[era];
   return [
-    { era, level: 1, cardCount: 8,  pairCount: 4,  optimalMoves: 8,  previewDuration: 3000, timeLimitGold: 60,  timeLimitSilver: 90,  timeLimitBronze: 120, label: labels[0] },
-    { era, level: 2, cardCount: 12, pairCount: 6,  optimalMoves: 12, previewDuration: 2500, timeLimitGold: 80,  timeLimitSilver: 120, timeLimitBronze: 160, label: labels[1] },
-    { era, level: 3, cardCount: 16, pairCount: 8,  optimalMoves: 16, previewDuration: 2000, timeLimitGold: 100, timeLimitSilver: 150, timeLimitBronze: 200, label: labels[2] },
-    { era, level: 4, cardCount: 20, pairCount: 10, optimalMoves: 20, previewDuration: 1500, timeLimitGold: 120, timeLimitSilver: 180, timeLimitBronze: 240, label: labels[3] },
-    { era, level: 5, cardCount: 24, pairCount: 12, optimalMoves: 24, previewDuration: 0,    timeLimitGold: 150, timeLimitSilver: 225, timeLimitBronze: 300, label: labels[4] },
+    {
+      era, level: 1, cardCount: 8, pairCount: 4, optimalMoves: 8, previewDuration: 3000,
+      timeLimitGold: 60, timeLimitSilver: 90, timeLimitBronze: 120, label: labels[0],
+      mechanics: era === Difficulty.Easy ? ['Sandstorm starts lightly'] : era === Difficulty.Medium ? ['Shielded mismatches'] : ['Pulse scan preview'],
+      minimumPairDistance: 2,
+      pattern: 'zigzag',
+    },
+    {
+      era, level: 2, cardCount: 12, pairCount: 6, optimalMoves: 12, previewDuration: 2500,
+      timeLimitGold: 80, timeLimitSilver: 120, timeLimitBronze: 160, label: labels[1],
+      mechanics: ['Hint charge unlocked'],
+      minimumPairDistance: 2,
+      pattern: 'columns',
+    },
+    {
+      era, level: 3, cardCount: 16, pairCount: 8, optimalMoves: 16, previewDuration: 2000,
+      timeLimitGold: 100, timeLimitSilver: 150, timeLimitBronze: 200, label: labels[2],
+      mechanics: ['Freeze burst unlocked', 'Decoy-style symbols appear'],
+      minimumPairDistance: 3,
+      pattern: 'zigzag',
+    },
+    {
+      era, level: 4, cardCount: 20, pairCount: 10, optimalMoves: 20, previewDuration: 1500,
+      timeLimitGold: 120, timeLimitSilver: 180, timeLimitBronze: 240, label: labels[3],
+      mechanics: ['Trap reshuffle unlocked', 'Board twists under pressure'],
+      minimumPairDistance: 3,
+      pattern: 'spiral',
+    },
+    {
+      era, level: 5, cardCount: 24, pairCount: 12, optimalMoves: 24, previewDuration: 0,
+      timeLimitGold: 150, timeLimitSilver: 225, timeLimitBronze: 300, label: labels[4],
+      mechanics: ['Boss level', 'All era powers active', 'Multiplier charge unlocked'],
+      boss: true,
+      relic:
+        era === Difficulty.Easy ? 'Sun Relic' :
+        era === Difficulty.Medium ? 'Crown Relic' :
+        era === Difficulty.Hard ? 'Nova Relic' :
+        era === Difficulty.Expert ? 'Quantum Relic' : 'Mythic Relic',
+      minimumPairDistance: 4,
+      pattern: 'spiral',
+    },
+    {
+      era, level: 6, cardCount: 28, pairCount: 14, optimalMoves: 28, previewDuration: 0,
+      timeLimitGold: 180, timeLimitSilver: 260, timeLimitBronze: 340, label: labels[5],
+      mechanics: ['Elite gauntlet', 'Frequent board twists', 'Long-range pairs only'],
+      minimumPairDistance: 4,
+      pattern: 'columns',
+    },
+    {
+      era, level: 7, cardCount: 32, pairCount: 16, optimalMoves: 32, previewDuration: 0,
+      timeLimitGold: 210, timeLimitSilver: 300, timeLimitBronze: 390, label: labels[6],
+      mechanics: ['Final boss', 'Maximum distance pairs', 'All powers pressured'],
+      boss: true,
+      relic:
+        era === Difficulty.Easy ? 'Solar Archive' :
+        era === Difficulty.Medium ? 'Royal Archive' :
+        era === Difficulty.Hard ? 'Starlight Archive' :
+        era === Difficulty.Expert ? 'Nexus Archive' : 'Eternal Archive',
+      minimumPairDistance: 5,
+      pattern: 'spiral',
+    },
   ];
 }
 
@@ -336,6 +506,8 @@ export const ERA_LEVEL_CONFIGS: Record<Difficulty, EraLevel[]> = {
   [Difficulty.Easy]:   buildEraLevels(Difficulty.Easy),
   [Difficulty.Medium]: buildEraLevels(Difficulty.Medium),
   [Difficulty.Hard]:   buildEraLevels(Difficulty.Hard),
+  [Difficulty.Expert]: buildEraLevels(Difficulty.Expert),
+  [Difficulty.Master]: buildEraLevels(Difficulty.Master),
 };
 
 // ── Helper functions ──────────────────────────────────────────────────────────
@@ -375,6 +547,10 @@ export function getTimeBonusScore(elapsed: number, level: EraLevel): number {
   return base;
 }
 
+export function getMovesNeededForThreeStars(optimalMoves: number): number {
+  return Math.floor((optimalMoves * 110) / 100);
+}
+
 export function getStreakMultiplier(streak: DailyStreak): number {
   if (streak.currentStreak >= 30) return 2.0;
   if (streak.currentStreak >= 14) return 1.5;
@@ -388,20 +564,20 @@ export function isLevelUnlocked(era: Difficulty, level: number, levelProgress: L
 }
 
 export function isEraUnlocked(era: Difficulty, levelProgress: LevelProgress[]): boolean {
-  if (era === Difficulty.Easy) return true;
+  const index = DIFFICULTY_ORDER.indexOf(era);
+  if (index <= 0) return true;
 
-  if (era === Difficulty.Medium) {
-    return levelProgress.some(
-      (lp) => lp.era === Difficulty.Easy && lp.level >= 3 && lp.completed
-    );
-  }
-
-  if (era === Difficulty.Hard) {
-    return levelProgress.some(
-      (lp) => lp.era === Difficulty.Medium && lp.level >= 3 && lp.completed
-    );
-  }
-
-  return false;
+  const previousEra = DIFFICULTY_ORDER[index - 1];
+  const requiredLevel = Math.min(4, ERA_LEVEL_CONFIGS[previousEra].length);
+  return levelProgress.some(
+    (lp) => lp.era === previousEra && lp.level >= requiredLevel && lp.completed
+  );
 }
 
+export function getMaxLevelForEra(era: Difficulty): number {
+  return ERA_LEVEL_CONFIGS[era]?.length ?? 0;
+}
+
+export function getTotalLevelCount(): number {
+  return DIFFICULTY_ORDER.reduce((sum, era) => sum + getMaxLevelForEra(era), 0);
+}

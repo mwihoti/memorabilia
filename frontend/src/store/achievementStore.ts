@@ -1,4 +1,4 @@
-import { Achievement, Difficulty, LevelProgress, TimeMedal, DailyStreak } from '../types';
+import { Achievement, Difficulty, DIFFICULTY_ORDER, ERA_LEVEL_CONFIGS, LevelProgress, TimeMedal, DailyStreak } from '../types';
 
 const ACHIEVEMENTS_KEY = 'memorabilia_achievements';
 
@@ -8,11 +8,11 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'perfect_memory',     name: 'Perfect Memory',      description: 'Complete a level with zero mismatches',           icon: '🧠', reward: 'theme_golden' },
   { id: 'archivist',          name: 'Archivist',           description: '3 consecutive matches without a mistake',         icon: '📚' },
   { id: 'hot_streak',         name: 'Hot Streak',          description: '5 consecutive matches without a mistake',         icon: '🔥', reward: 'theme_inferno' },
-  { id: 'time_traveler',      name: 'Time Traveler',       description: 'Complete all 3 eras',                             icon: '⏳' },
+  { id: 'time_traveler',      name: 'Time Traveler',       description: 'Complete every era',                             icon: '⏳' },
   { id: 'streak_scholar',     name: 'Streak Scholar',      description: 'Maintain a 7-day streak',                        icon: '📅', reward: 'theme_starfield' },
-  { id: 'ancient_master',     name: 'Ancient Master',      description: 'Complete Ancient Era Level 5',                   icon: '🏺', reward: 'theme_antiquity' },
-  { id: 'medieval_champion',  name: 'Medieval Champion',   description: 'Complete Medieval Times Level 5',                icon: '⚔️', reward: 'theme_chivalry' },
-  { id: 'modern_legend',      name: 'Modern Legend',       description: 'Complete Modern Era Level 5',                    icon: '🚀', reward: 'theme_neon' },
+  { id: 'ancient_master',     name: 'Ancient Master',      description: 'Complete Ancient Era Level 7',                   icon: '🏺', reward: 'theme_antiquity' },
+  { id: 'medieval_champion',  name: 'Medieval Champion',   description: 'Complete Medieval Times Level 7',                icon: '⚔️', reward: 'theme_chivalry' },
+  { id: 'modern_legend',      name: 'Modern Legend',       description: 'Complete Modern Era Level 7',                    icon: '🚀', reward: 'theme_neon' },
   { id: 'combo_king',         name: 'Combo King',          description: 'Reach x3 combo multiplier',                      icon: '👑' },
   { id: 'daily_devotee',      name: 'Daily Devotee',       description: 'Complete a Daily Challenge',                     icon: '📆' },
   { id: 'gold_rush',          name: 'Gold Rush',           description: 'Earn Gold medal on any level',                   icon: '🥇' },
@@ -138,29 +138,28 @@ export function checkAndUnlockAchievements(ctx: AchievementContext): Achievement
     tryUnlock('perfectionist');
   }
 
-  // ancient_master — completed Ancient Era Level 5
+  const ancientFinalLevel = ERA_LEVEL_CONFIGS[Difficulty.Easy].length;
   const ancientL5Done = ctx.levelProgress.some(
-    (lp) => lp.era === Difficulty.Easy && lp.level === 5 && lp.completed
+    (lp) => lp.era === Difficulty.Easy && lp.level === ancientFinalLevel && lp.completed
   );
   if (ancientL5Done) tryUnlock('ancient_master');
 
-  // medieval_champion — completed Medieval Times Level 5
+  const medievalFinalLevel = ERA_LEVEL_CONFIGS[Difficulty.Medium].length;
   const medievalL5Done = ctx.levelProgress.some(
-    (lp) => lp.era === Difficulty.Medium && lp.level === 5 && lp.completed
+    (lp) => lp.era === Difficulty.Medium && lp.level === medievalFinalLevel && lp.completed
   );
   if (medievalL5Done) tryUnlock('medieval_champion');
 
-  // modern_legend — completed Modern Era Level 5
+  const modernFinalLevel = ERA_LEVEL_CONFIGS[Difficulty.Hard].length;
   const modernL5Done = ctx.levelProgress.some(
-    (lp) => lp.era === Difficulty.Hard && lp.level === 5 && lp.completed
+    (lp) => lp.era === Difficulty.Hard && lp.level === modernFinalLevel && lp.completed
   );
   if (modernL5Done) tryUnlock('modern_legend');
 
-  // time_traveler — at least one completion in each era
-  const hasAncient  = ctx.levelProgress.some((lp) => lp.era === Difficulty.Easy   && lp.completed);
-  const hasMedieval = ctx.levelProgress.some((lp) => lp.era === Difficulty.Medium  && lp.completed);
-  const hasModern   = ctx.levelProgress.some((lp) => lp.era === Difficulty.Hard    && lp.completed);
-  if (hasAncient && hasMedieval && hasModern) tryUnlock('time_traveler');
+  const completedAllEras = DIFFICULTY_ORDER.every((era) =>
+    ctx.levelProgress.some((lp) => lp.era === era && lp.completed)
+  );
+  if (completedAllEras) tryUnlock('time_traveler');
 
   // streak_scholar — 7-day streak
   if (ctx.streak.currentStreak >= 7) tryUnlock('streak_scholar');

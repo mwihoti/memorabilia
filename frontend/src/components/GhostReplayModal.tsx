@@ -15,6 +15,8 @@ const ERA_LABELS: Record<Difficulty, string> = {
   [Difficulty.Easy]:   '🏺 Ancient Era',
   [Difficulty.Medium]: '⚔️ Medieval Times',
   [Difficulty.Hard]:   '🚀 Modern Era',
+  [Difficulty.Expert]: '🛸 Future Nexus',
+  [Difficulty.Master]: '🐲 Mythic Vault',
 };
 
 function formatTime(ms: number): string {

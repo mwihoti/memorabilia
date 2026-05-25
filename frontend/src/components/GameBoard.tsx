@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
-import { GAME_CONFIGS, ERA_LEVEL_CONFIGS, getTimeMedal } from '../types';
+import { GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getTimeMedal } from '../types';
 import Card from './Card';
 import ComboDisplay from './ComboDisplay';
 
@@ -17,6 +17,23 @@ export default function GameBoard() {
     currentEra,
     currentLevel,
     streak,
+    shieldCharges,
+    hintCharges,
+    freezeCharges,
+    trapCharges,
+    multiplierCharges,
+    pendingMultiplier,
+    hiddenCardIndices,
+    pulseScanRow,
+    boardRotationDeg,
+    hintPairIndices,
+    useHint,
+    useFreeze,
+    useTrap,
+    armMultiplier,
+    triggerSandstorm,
+    triggerPulseScan,
+    triggerBoardEvent,
   } = useGameStore();
 
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -61,6 +78,25 @@ export default function GameBoard() {
     const hide = setTimeout(() => setShowPreview(false), previewDurationMs);
     return () => { clearInterval(tick); clearTimeout(hide); };
   }, [currentGame?.game_id]);
+
+  useEffect(() => {
+    if (!currentGame || showPreview || currentEra !== 1) return;
+    const id = setInterval(() => triggerSandstorm(), 18000);
+    return () => clearInterval(id);
+  }, [currentGame?.game_id, showPreview, currentEra, triggerSandstorm]);
+
+  useEffect(() => {
+    if (!currentGame || showPreview || currentEra !== 3) return;
+    const id = setInterval(() => triggerPulseScan(), 16000);
+    return () => clearInterval(id);
+  }, [currentGame?.game_id, showPreview, currentEra, triggerPulseScan]);
+
+  useEffect(() => {
+    if (!currentGame || showPreview || currentLevel < 4) return;
+    const intervalMs = currentLevel >= 5 ? 15000 : 22000;
+    const id = setInterval(() => triggerBoardEvent(), intervalMs);
+    return () => clearInterval(id);
+  }, [currentGame?.game_id, showPreview, currentLevel, triggerBoardEvent]);
 
   // Timer
   useEffect(() => {
@@ -147,9 +183,8 @@ export default function GameBoard() {
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  const difficultyLabel =
-    currentGame.difficulty === 1 ? '🏺 Ancient Era' :
-    currentGame.difficulty === 2 ? '⚔️ Medieval Times' : '🚀 Modern Era';
+  const difficultyMeta = getDifficultyMeta(currentGame.difficulty);
+  const difficultyLabel = `${difficultyMeta.icon} ${difficultyMeta.label}`;
 
   // Level label (e.g. "Scholar") from config
   const levelLabel = levelConfig?.label ?? null;
@@ -158,6 +193,7 @@ export default function GameBoard() {
   const previewLabel = levelConfig
     ? `Level ${currentLevel} · ${levelConfig.label} · ${(levelConfig.previewDuration / 1000).toFixed(1)}s preview`
     : null;
+  const mechanicLabels = levelConfig?.mechanics ?? [];
 
   const accentColor = theme === 'museum' ? 'text-amber-400' : theme === 'nature' ? 'text-green-400' : 'text-[#00ff88]';
   const streakBg = theme === 'museum' ? 'bg-amber-500 text-slate-900' : theme === 'nature' ? 'bg-green-500 text-slate-900' : 'bg-[#00ff88] text-black';
@@ -205,6 +241,20 @@ export default function GameBoard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {mechanicLabels.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5 justify-center">
+          {mechanicLabels.map((mechanic) => (
+            <span
+              key={mechanic}
+              className="px-2.5 py-1 rounded-full text-[10px] sm:text-xs border text-white/75"
+              style={{ borderColor: 'var(--theme-border)', backgroundColor: 'rgba(255,255,255,0.05)' }}
+            >
+              {mechanic}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="mb-3 grid grid-cols-4 gap-1.5 sm:gap-2">
@@ -292,6 +342,45 @@ export default function GameBoard() {
       {/* Combo display */}
       <ComboDisplay combo={combo} />
 
+      {/* Action bar */}
+      <div className="mb-3 grid grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-2">
+        {[
+          { label: 'Hint', icon: '💡', charges: hintCharges, onClick: useHint, disabled: hintCharges <= 0 },
+          { label: 'Freeze', icon: '❄️', charges: freezeCharges, onClick: useFreeze, disabled: freezeCharges <= 0 },
+          { label: 'Trap', icon: '🌀', charges: trapCharges, onClick: useTrap, disabled: trapCharges <= 0 },
+          { label: pendingMultiplier > 1 ? 'Armed x2' : 'Boost', icon: '⚡', charges: multiplierCharges, onClick: armMultiplier, disabled: multiplierCharges <= 0 || pendingMultiplier > 1 },
+        ].map((action) => (
+          <button
+            key={action.label}
+            onClick={action.onClick}
+            disabled={action.disabled || showPreview || isChecking}
+            className="rounded-xl border px-3 py-2 text-left disabled:opacity-40"
+            style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'var(--theme-border)' }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm sm:text-base">{action.icon}</span>
+              <span className={`text-[10px] sm:text-xs font-semibold ${accentColor}`}>x{action.charges}</span>
+            </div>
+            <div className="text-xs sm:text-sm font-bold text-white/85">{action.label}</div>
+          </button>
+        ))}
+      </div>
+
+      {(shieldCharges > 0 || pendingMultiplier > 1) && (
+        <div className="mb-3 flex flex-wrap justify-center gap-2 text-[10px] sm:text-xs">
+          {shieldCharges > 0 && (
+            <span className="px-2.5 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300">
+              🛡️ {shieldCharges} shield{shieldCharges === 1 ? '' : 's'} ready
+            </span>
+          )}
+          {pendingMultiplier > 1 && (
+            <span className="px-2.5 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300">
+              ⚡ next match x{pendingMultiplier}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Progress bar */}
       <div className="mb-3 rounded-full h-1.5 sm:h-2 overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
         <motion.div
@@ -318,12 +407,21 @@ export default function GameBoard() {
       </AnimatePresence>
 
       {/* Game Board */}
-      <div className={`grid ${gridClass} gap-1.5 sm:gap-2`}>
+      <motion.div
+        className={`grid ${gridClass} gap-1.5 sm:gap-2`}
+        animate={{ rotate: boardRotationDeg % 360 }}
+        transition={{ duration: 0.55, ease: 'easeInOut' }}
+      >
         {currentGame.cards.map((card, index) => {
           const isMatched = card.is_matched;
-          const isFlipped = showPreview || flippedCards.includes(index) || isMatched;
+          const columns = actualCardCount <= 16 ? 4 : 6;
+          const row = Math.floor(index / columns);
+          const pulseReveal = pulseScanRow !== null && row === pulseScanRow;
+          const isFlipped = showPreview || flippedCards.includes(index) || isMatched || pulseReveal;
           const emoji = currentGame.emojis?.[card.value] ?? '❓';
           const isMismatched = mismatchedIndices.includes(index);
+          const isObscured = hiddenCardIndices.includes(index) && !isFlipped;
+          const isHinted = hintPairIndices.includes(index);
 
           return (
             <Card
@@ -332,13 +430,15 @@ export default function GameBoard() {
               isFlipped={isFlipped}
               isMatched={isMatched}
               isMismatched={isMismatched}
+              isHinted={isHinted}
+              isObscured={isObscured}
               index={index}
               onClick={() => !isChecking && !showPreview && flipCard(index)}
               disabled={isChecking || isMatched || showPreview}
             />
           );
         })}
-      </div>
+      </motion.div>
 
       {/* Checking indicator */}
       <AnimatePresence>

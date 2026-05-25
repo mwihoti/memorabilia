@@ -10,6 +10,8 @@ interface CardProps {
   disabled?: boolean;
   index?: number;
   isMismatched?: boolean;
+  isHinted?: boolean;
+  isObscured?: boolean;
 }
 
 export default function Card({
@@ -20,6 +22,8 @@ export default function Card({
   disabled,
   index = 0,
   isMismatched = false,
+  isHinted = false,
+  isObscured = false,
 }: CardProps) {
   const { theme } = useGameStore();
 
@@ -163,6 +167,10 @@ export default function Card({
               >
                 {cardBack.centerIcon}
               </motion.div>
+
+              {isObscured && (
+                <div className="absolute inset-0 z-20 bg-gradient-to-br from-amber-100/35 via-stone-300/20 to-transparent backdrop-blur-[2px]" />
+              )}
             </div>
           </div>
 
@@ -197,16 +205,23 @@ export default function Card({
 
               {/* Emoji */}
               <motion.div
-                className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl filter drop-shadow-md z-10"
+                className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl filter drop-shadow-md z-10 ${isHinted ? 'drop-shadow-[0_0_12px_rgba(250,204,21,0.85)]' : ''}`}
                 initial={false}
                 animate={isMatched ? {
                   scale: [1, 1.4, 1.1],
                   rotate: [0, 12, -12, 0],
+                } : isHinted ? {
+                  scale: [1, 1.14, 1],
+                  rotate: [0, -6, 6, 0],
                 } : { scale: 1, rotate: 0 }}
                 transition={{ duration: 0.35, ease: 'backOut' }}
               >
                 {emoji}
               </motion.div>
+
+              {isHinted && !isMatched && (
+                <div className="absolute inset-[4px] rounded-xl border-2 border-amber-300/80 shadow-[0_0_16px_rgba(250,204,21,0.45)]" />
+              )}
 
               {/* Matched checkmark */}
               {isMatched && (
