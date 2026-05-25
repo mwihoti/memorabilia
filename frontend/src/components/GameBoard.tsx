@@ -32,7 +32,6 @@ export default function GameBoard() {
     armMultiplier,
     triggerSandstorm,
     triggerPulseScan,
-    triggerBoardEvent,
   } = useGameStore();
 
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -89,13 +88,6 @@ export default function GameBoard() {
     const id = setInterval(() => triggerPulseScan(), 16000);
     return () => clearInterval(id);
   }, [currentGame?.game_id, showPreview, currentEra, triggerPulseScan]);
-
-  useEffect(() => {
-    if (!currentGame || showPreview || currentLevel < 4) return;
-    const intervalMs = currentLevel >= 5 ? 15000 : 22000;
-    const id = setInterval(() => triggerBoardEvent(), intervalMs);
-    return () => clearInterval(id);
-  }, [currentGame?.game_id, showPreview, currentLevel, triggerBoardEvent]);
 
   // Timer
   useEffect(() => {

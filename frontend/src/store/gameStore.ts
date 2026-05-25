@@ -756,17 +756,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
         // Combo reset and mismatch tracking (demo mode only)
         if (!gameController) {
-          const { mismatches, shieldCharges, shieldBlocksUsed, currentEra, currentLevel } = get();
+          const { mismatches, shieldCharges, shieldBlocksUsed } = get();
           const shieldAbsorbed = shieldCharges > 0;
           set({
             combo:            { count: 0, multiplier: 1 },
             mismatches:       shieldAbsorbed ? mismatches : mismatches + 1,
             shieldCharges:    shieldAbsorbed ? shieldCharges - 1 : shieldCharges,
             shieldBlocksUsed: shieldAbsorbed ? shieldBlocksUsed + 1 : shieldBlocksUsed,
-            boardRotationDeg: currentLevel >= 4 ? get().boardRotationDeg + (currentEra >= Difficulty.Hard ? 180 : 90) : get().boardRotationDeg,
-            currentGame: currentLevel >= 4
-              ? { ...currentGame, cards: reshuffleUnmatchedCards(currentGame.cards) }
-              : currentGame,
+            currentGame,
           });
         }
 
@@ -1002,18 +999,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   triggerBoardEvent: () => {
-    const { currentGame, currentEra, currentLevel, isChecking } = get();
-    if (!currentGame || isChecking) return;
-    const isBoss = !!ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel - 1]?.boss;
-    const shouldReshuffle = isBoss || currentLevel >= 4;
-    set((state) => ({
-      currentGame: shouldReshuffle
-        ? { ...state.currentGame!, cards: reshuffleUnmatchedCards(state.currentGame!.cards) }
-        : state.currentGame,
-      boardRotationDeg: state.boardRotationDeg + (currentEra >= Difficulty.Hard ? 180 : 90),
-      flippedCards: [],
-      hintPairIndices: [],
-    }));
+    set({ hintPairIndices: [] });
   },
 
   // UI Actions
