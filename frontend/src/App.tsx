@@ -33,6 +33,7 @@ function App() {
   const [showOpeningIntro, setShowOpeningIntro] = useState(false);
   const [showSplashIntro, setShowSplashIntro] = useState(false);
   const [showLevelIntro, setShowLevelIntro] = useState(false);
+  const [introDecisionMade, setIntroDecisionMade] = useState(false);
 
   const {
     telegramUser,
@@ -53,15 +54,27 @@ function App() {
   } = useGameStore();
 
   useEffect(() => {
-    if (isInitializing) return;
     const hasSeenOpening = localStorage.getItem('memorabilia_seen_opening_intro') === '1';
     if (!hasSeenOpening) {
       setShowOpeningIntro(true);
       localStorage.setItem('memorabilia_seen_opening_intro', '1');
+    } else {
+      setShowSplashIntro(true);
+    }
+    setIntroDecisionMade(true);
+  }, []);
+
+  useEffect(() => {
+    if (isInitializing || !introDecisionMade) return;
+    const hasSeenOpening = localStorage.getItem('memorabilia_seen_opening_intro') === '1';
+    if (!hasSeenOpening && !showOpeningIntro) {
+      setShowOpeningIntro(true);
       return;
     }
-    setShowSplashIntro(true);
-  }, [isInitializing]);
+    if (hasSeenOpening && !showSplashIntro && !showOpeningIntro) {
+      setShowSplashIntro(true);
+    }
+  }, [isInitializing, introDecisionMade, showOpeningIntro, showSplashIntro]);
 
   useEffect(() => {
     if (!currentGame || screen !== 'game') return;
@@ -202,8 +215,9 @@ function App() {
     setScreen('level-select');
   };
 
-  // Always show loading first while we initialise
-  if (isInitializing) {
+  const isStartupIntroVisible = showOpeningIntro || showSplashIntro;
+
+  if ((isInitializing || !introDecisionMade) && !isStartupIntroVisible) {
     return <LoadingScreen />;
   }
 
@@ -312,7 +326,9 @@ function App() {
         open={showOpeningIntro}
         onComplete={() => {
           setShowOpeningIntro(false);
-          setShowSplashIntro(true);
+          if (!isInitializing) {
+            setShowSplashIntro(true);
+          }
         }}
       />
 
