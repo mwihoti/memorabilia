@@ -1,32 +1,12 @@
-import { DailyChallenge, Difficulty, DIFFICULTY_ORDER, ERA_LEVEL_CONFIGS, TimeMedal, WeeklyChallenge } from '../types';
+import { DailyChallenge, TimeMedal, WeeklyChallenge } from '../types';
 import { getToday } from './streakStore';
+import { getDailyChallengeConfigFromDate, getWeeklyChallengeConfigFromDate } from '../../../shared/gameRules.js';
 
 const DAILY_CHALLENGE_KEY = 'memorabilia_daily_challenge';
 const WEEKLY_CHALLENGE_KEY = 'memorabilia_weekly_challenge';
 
-// ── Config derivation ─────────────────────────────────────────────────────────
-
-/**
- * Derive the difficulty for today based on the day of week.
- * Mon/Thu = Ancient (Easy), Tue/Fri = Medieval (Medium), Wed/Sat/Sun = Modern (Hard)
- */
-function difficultyFromDayOfWeek(dayOfWeek: number): Difficulty {
-  return DIFFICULTY_ORDER[dayOfWeek % DIFFICULTY_ORDER.length];
-}
-
-export function getDailyChallengeConfig(): { difficulty: Difficulty; level: number; seed: number } {
-  const today = getToday(); // 'YYYY-MM-DD'
-  const date  = new Date(today);
-
-  const dayOfWeek  = date.getDay();
-  const dayOfMonth = date.getDate();
-
-  const difficulty = difficultyFromDayOfWeek(dayOfWeek);
-  const levelCount = ERA_LEVEL_CONFIGS[difficulty].length;
-  const level      = (dayOfMonth % levelCount) + 1;
-  const seed       = parseInt(today.replace(/-/g, ''), 10); // YYYYMMDD as number
-
-  return { difficulty, level, seed };
+export function getDailyChallengeConfig() {
+  return getDailyChallengeConfigFromDate(getToday());
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -75,36 +55,8 @@ export function isDailyChallengeCompleted(): boolean {
   return challenge.completed;
 }
 
-function getWeekStart(date: Date): Date {
-  const copy = new Date(date);
-  const day = (copy.getDay() + 6) % 7;
-  copy.setDate(copy.getDate() - day);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function getWeekKey(date: Date): string {
-  const start = getWeekStart(date);
-  const year = start.getFullYear();
-  const startOfYear = new Date(year, 0, 1);
-  const diffDays = Math.floor((start.getTime() - startOfYear.getTime()) / 86_400_000);
-  const week = Math.floor(diffDays / 7) + 1;
-  return `${year}-W${String(week).padStart(2, '0')}`;
-}
-
-export function getWeeklyChallengeConfig(): { difficulty: Difficulty; level: number; seed: number; weekKey: string } {
-  const today = new Date(getToday());
-  const weekStart = getWeekStart(today);
-  const weekKey = getWeekKey(today);
-  const seed = parseInt(
-    `${weekStart.getFullYear()}${String(weekStart.getMonth() + 1).padStart(2, '0')}${String(weekStart.getDate()).padStart(2, '0')}`,
-    10,
-  );
-
-  const difficulty = DIFFICULTY_ORDER[seed % DIFFICULTY_ORDER.length];
-  const level = (seed % ERA_LEVEL_CONFIGS[difficulty].length) + 1;
-
-  return { difficulty, level, seed, weekKey };
+export function getWeeklyChallengeConfig() {
+  return getWeeklyChallengeConfigFromDate(getToday());
 }
 
 export function loadWeeklyChallenge(): WeeklyChallenge {

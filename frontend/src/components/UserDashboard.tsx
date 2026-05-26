@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { fetchLeaderboard, fetchPlayerStats, LeaderboardRow, PlayerStatsResponse } from '../lib/api';
 import { DIFFICULTY_ORDER, ERA_LEVEL_CONFIGS, getDifficultyMeta } from '../types';
+import { getPlayerSettings, PreviewLength, savePlayerSettings } from '../store/settings';
+import { soundManager } from '../utils/sounds';
 
 function formatCompactTime(timestamp: string): string {
   const diff = Date.now() - new Date(timestamp).getTime();
@@ -22,6 +24,7 @@ export default function UserDashboard() {
   const [topPlayers, setTopPlayers] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState(() => getPlayerSettings());
 
   useEffect(() => {
     let cancelled = false;
@@ -36,14 +39,28 @@ export default function UserDashboard() {
       setError(null);
 
       try {
-        const [stats, leaderboard] = await Promise.all([
+        const [statsResult, leaderboardResult] = await Promise.allSettled([
           fetchPlayerStats(telegramUser.id),
           fetchLeaderboard(8),
         ]);
 
         if (cancelled) return;
-        setPlayerStats(stats);
-        setTopPlayers(leaderboard.entries);
+
+        if (statsResult.status === 'fulfilled') {
+          setPlayerStats(statsResult.value);
+        }
+
+        if (leaderboardResult.status === 'fulfilled') {
+          setTopPlayers(leaderboardResult.value.entries);
+        }
+
+        if (statsResult.status === 'rejected' && leaderboardResult.status === 'rejected') {
+          setError('Could not load live dashboard data right now.');
+        } else if (statsResult.status === 'rejected') {
+          setError('Profile stats are temporarily unavailable. Live leaderboard still loaded.');
+        } else if (leaderboardResult.status === 'rejected') {
+          setError('Leaderboard snapshot is temporarily unavailable. Your profile still loaded.');
+        }
       } catch (err: any) {
         if (cancelled) return;
         setError(err.message || 'Failed to load dashboard');
@@ -77,6 +94,12 @@ export default function UserDashboard() {
   const totalCompletedLevels = levelProgress.filter((entry) => entry.completed).length;
   const totalLevels = progressSummary.reduce((sum, era) => sum + era.total, 0);
   const displayName = playerName || telegramUser?.first_name || 'Curator';
+
+  const updateSetting = <K extends keyof ReturnType<typeof getPlayerSettings>>(key: K, value: ReturnType<typeof getPlayerSettings>[K]) => {
+    const next = savePlayerSettings({ [key]: value });
+    setSettings(next);
+    if (key === 'soundEnabled') soundManager.setEnabled(Boolean(value));
+  };
 
   const themeAccent = {
     museum: {
@@ -159,6 +182,47 @@ export default function UserDashboard() {
             <p className="mt-2 text-xs text-white/50">{card.note}</p>
           </div>
         ))}
+      </section>
+
+      <section className={`rounded-3xl border ${themeAccent.card} p-5`}>
+        <p className={`text-[11px] font-semibold uppercase tracking-[0.25em] ${themeAccent.text}`}>Player Settings</p>
+        <h3 className="mt-1 text-xl font-bold text-white">Comfort & Accessibility</h3>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <button
+            onClick={() => updateSetting('soundEnabled', !settings.soundEnabled)}
+            className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left"
+          >
+            <p className="text-sm font-bold text-white">{settings.soundEnabled ? '🔊 Sound On' : '🔇 Sound Off'}</p>
+            <p className="mt-1 text-xs text-white/45">Toggle in-game sound effects.</p>
+          </button>
+
+          <button
+            onClick={() => updateSetting('reducedMotion', !settings.reducedMotion)}
+            className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-left"
+          >
+            <p className="text-sm font-bold text-white">{settings.reducedMotion ? '🪶 Reduced Motion' : '✨ Full Motion'}</p>
+            <p className="mt-1 text-xs text-white/45">Shortens intro transitions and animation weight.</p>
+          </button>
+
+          <div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
+            <p className="text-sm font-bold text-white">🧠 Preview Length</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(['normal', 'long', 'very_long'] as PreviewLength[]).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => updateSetting('previewLength', option)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    settings.previewLength === option
+                      ? `${themeAccent.badge}`
+                      : 'border border-white/10 bg-black/10 text-white/65'
+                  }`}
+                >
+                  {option === 'normal' ? 'Normal' : option === 'long' ? 'Longer' : 'Very Long'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">

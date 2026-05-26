@@ -16,7 +16,7 @@ import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } fr
 import { cartridgeController } from '../cartridge/CartridgeController';
 import { mintScoreNFT } from '../cartridge/nftMinter';
 import { addGameScore, saveLevelProgress, getAllLevelProgress, getRelicRewards, saveRelicReward } from './playerStorage';
-import { submitScore } from '../lib/api';
+import { fetchPlayerProgress, savePlayerProgress, sendTelemetry, startVerifiedRun, submitScore } from '../lib/api';
 import { checkAndUnlockAchievements } from './achievementStore';
 import { loadStreak, recordGamePlayed } from './streakStore';
 import { getDailyChallengeConfig, getWeeklyChallengeConfig, saveDailyChallenge, saveWeeklyChallenge } from './dailyChallenge';
@@ -139,7 +139,6 @@ interface GameStore {
   // ── Level System State ─────────────────────────────────────────────────────
   currentEra: Difficulty | null;
   currentLevel: number;
-  currentStage: number;
   combo: ComboState;
   mismatches: number;
   maxCombo: number;
@@ -168,6 +167,7 @@ interface GameStore {
   hiddenCardIndices: number[];
   pulseScanRow: number | null;
   boardRotationDeg: number;
+  verifiedRunId: number | null;
 
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
@@ -192,11 +192,12 @@ interface GameStore {
   resetGame: () => void;
 
   // ── Level System Actions ───────────────────────────────────────────────────
-  setCurrentLevel: (era: Difficulty, level: number, stage?: number) => void;
-  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean, stage?: number) => Promise<void>;
+  setCurrentLevel: (era: Difficulty, level: number) => void;
+  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean) => Promise<void>;
   startWeeklyChallenge: () => Promise<void>;
   clearNewAchievements: () => void;
   loadLevelProgress: () => void;
+  hydratePlayerProgress: () => Promise<void>;
   useHint: () => void;
   useFreeze: () => void;
   useTrap: () => void;
@@ -248,7 +249,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Level System initial state
   currentEra: null,
   currentLevel: 1,
-  currentStage: 1,
   combo: { count: 0, multiplier: 1 },
   mismatches: 0,
   maxCombo: 0,
@@ -277,6 +277,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   hiddenCardIndices: [],
   pulseScanRow: null,
   boardRotationDeg: 0,
+  verifiedRunId: null,
 
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
@@ -474,8 +475,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // Demo mode - just update local state
       if (!gameController) {
+        const timestamp = Date.now() - get().gameStartMs;
         const newFlippedCards = [...flippedCards, index];
-        set({ flippedCards: newFlippedCards });
+        set((state) => ({
+          flippedCards: newFlippedCards,
+          replayMoves: [...state.replayMoves, { cardIndex: index, timestamp }],
+        }));
 
         // If 2 cards are flipped, check for match after a short delay
         if (newFlippedCards.length === 2) {
@@ -541,7 +546,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
         // ── Combo tracking (demo mode only) ───────────────────────────────
         const {
-          combo, maxCombo: prevMaxCombo, replayMoves, gameStartMs, currentEra, currentLevel, currentStage,
+          combo, maxCombo: prevMaxCombo, currentEra, currentLevel,
           pendingMultiplier, multiplierMatches,
         } = get();
         const newComboCount  = !gameController ? combo.count + 1 : combo.count;
@@ -549,21 +554,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const newMaxCombo    = Math.max(prevMaxCombo, newComboCount);
         const appliedMultiplier = pendingMultiplier > 1 ? pendingMultiplier : 1;
 
-        // Record replay moves
-        const nowMs = Date.now();
-        const newReplayMoves: ReplayMove[] = !gameController
-          ? [
-              ...replayMoves,
-              { cardIndex: flippedCards[0], timestamp: nowMs - gameStartMs },
-              { cardIndex: flippedCards[1], timestamp: nowMs - gameStartMs + 1 },
-            ]
-          : replayMoves;
-
         if (!gameController) {
           set({
             combo: { count: newComboCount, multiplier: newMultiplier },
             maxCombo: newMaxCombo,
-            replayMoves: newReplayMoves,
             pendingMultiplier: 1,
             multiplierMatches: pendingMultiplier > 1 ? multiplierMatches + 1 : multiplierMatches,
           });
@@ -610,6 +604,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const finalMaxCombo  = newMaxCombo;
             const levelScore = calculateLevelScore(finalGame, finalMaxCombo, timeBonus);
             const stars      = calculateStars(finalGame.moves, levelConfig.optimalMoves);
+            const verifiedGame = { ...finalGame, score: levelScore };
 
             // Update streak
             const updatedStreak = recordGamePlayed();
@@ -618,8 +613,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const progress: LevelProgress = {
               era:         currentEra,
               level:       currentLevel,
-              completed:   currentStage >= levelConfig.stageCount,
-              highestStageCompleted: currentStage,
+              completed:   true,
               bestScore:   levelScore,
               bestTime:    elapsedSeconds,
               bestMedal:   medal,
@@ -644,7 +638,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
               finalGame.game_id,
               currentEra,
               currentLevel,
-              currentStage,
               finalReplayMoves,
               completedAt - currentGame.started_at,
               levelScore,
@@ -686,12 +679,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
             });
 
             set({
+              currentGame:                verifiedGame,
               levelProgress:              updatedLevelProgress,
               streak:                     updatedStreak,
               newlyUnlockedAchievements:  newAchievements,
               relicRewards:               getRelicRewards(),
               lastRunAnalytics:           analytics,
             });
+
+            const { telegramUser } = get();
+            if (telegramUser) {
+              savePlayerProgress(
+                {
+                  id: telegramUser.id,
+                  username: telegramUser.username,
+                  first_name: telegramUser.first_name,
+                  last_name: telegramUser.last_name,
+                },
+                progress,
+              ).catch((error) => {
+                sendTelemetry({
+                  type: 'error',
+                  source: 'progress-sync',
+                  message: error.message || 'Failed to sync progress',
+                  metadata: { era: currentEra, level: currentLevel },
+                });
+              });
+            }
           }
 
           // Save score to local storage
@@ -703,7 +717,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             console.log('🎯 Game Completed - Saving Score:', {
               telegramId: telegramUser.id,
               playerName: playerName,
-              score: finalGame.score,
+              score: get().currentGame?.score ?? finalGame.score,
               difficulty: finalGame.difficulty,
               moves: finalGame.moves,
               time: elapsedTime,
@@ -712,7 +726,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             addGameScore(
               telegramUser.id,
               playerName,
-              finalGame.score,
+              get().currentGame?.score ?? finalGame.score,
               finalGame.difficulty,
               finalGame.moves,
               elapsedTime,
@@ -730,17 +744,39 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 first_name: telegramUser.first_name,
                 last_name: telegramUser.last_name,
               },
-              score: finalGame.score,
+              score: get().currentGame?.score ?? finalGame.score,
               difficulty: finalGame.difficulty,
+              level: currentLevel,
               moves: finalGame.moves,
               timeSeconds: elapsedTime,
               stars,
+              replayMoves: get().replayMoves,
+              runId: get().verifiedRunId,
             })
               .then((result) => {
                 console.log(`✅ Score saved to Neon — Rank #${result.rank} of ${result.totalPlayers}${result.isNewBest ? ' (new personal best!)' : ''}`);
+                if (result.adjusted) {
+                  sendTelemetry({
+                    type: 'event',
+                    source: 'score-adjusted',
+                    message: 'Server adjusted submitted score to canonical verified score',
+                    metadata: {
+                      localScore: finalGame.score,
+                      verifiedScore: result.verifiedScore,
+                      era: currentEra,
+                      level: currentLevel,
+                    },
+                  });
+                }
               })
               .catch((err) => {
                 console.warn('⚠️ Neon score submit failed (localStorage still saved):', err.message);
+                sendTelemetry({
+                  type: 'error',
+                  source: 'score-submit',
+                  message: err.message || 'Failed to submit score',
+                  metadata: { era: currentEra, level: currentLevel },
+                });
               });
 
             console.log('✅ Score saved to player dashboard');
@@ -827,21 +863,52 @@ export const useGameStore = create<GameStore>((set, get) => ({
       pulseScanRow: null,
       boardRotationDeg: 0,
       pendingMultiplier: 1,
+      verifiedRunId: null,
     });
   },
   
   // ── Level System Actions ───────────────────────────────────────────────────
 
-  setCurrentLevel: (era: Difficulty, level: number, stage = 1) => {
-    set({ currentEra: era, currentLevel: level, currentStage: stage });
+  setCurrentLevel: (era: Difficulty, level: number) => {
+    set({ currentEra: era, currentLevel: level });
   },
 
-  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false, stage = 1) => {
+  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false) => {
     set({ isGameLoading: true });
     try {
       const actions = buildLevelActions(era, level);
       const dailySeed = isDailyChallenge ? getDailyChallengeConfig().seed : undefined;
-      const newGame = createLevelGame(era, level, dailySeed, stage);
+      let verifiedRunId: number | null = null;
+      let sessionSeed = dailySeed;
+      const telegramUser = get().telegramUser;
+
+      if (telegramUser) {
+        try {
+          const verifiedRun = await startVerifiedRun({
+            telegramUser: {
+              id: telegramUser.id,
+              username: telegramUser.username,
+              first_name: telegramUser.first_name,
+              last_name: telegramUser.last_name,
+            },
+            difficulty: era,
+            level,
+            challengeMode: isDailyChallenge ? 'daily' : 'standard',
+            requestedSeed: dailySeed,
+          });
+          verifiedRunId = verifiedRun.runId;
+          sessionSeed = verifiedRun.seed;
+        } catch (error: any) {
+          sendTelemetry({
+            type: 'error',
+            source: 'run-session',
+            message: error.message || 'Failed to create verified run session',
+            metadata: { era, level, isDailyChallenge },
+          });
+        }
+      }
+
+      const newGame = createLevelGame(era, level, sessionSeed);
       set({
         currentGame:               newGame,
         selectedDifficulty:        era,
@@ -850,7 +917,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         showWinModal:              false,
         currentEra:                era,
         currentLevel:              level,
-        currentStage:              stage,
         combo:                     { count: 0, multiplier: 1 },
         mismatches:                0,
         maxCombo:                  0,
@@ -876,6 +942,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         hiddenCardIndices:         [],
         pulseScanRow:              null,
         boardRotationDeg:          0,
+        verifiedRunId,
       });
     } catch (error) {
       console.error('Failed to start level game:', error);
@@ -888,7 +955,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       const config = getWeeklyChallengeConfig();
       const actions = buildLevelActions(config.difficulty, config.level);
-      const newGame = createLevelGame(config.difficulty, config.level, config.seed, 1);
+      let verifiedRunId: number | null = null;
+      const telegramUser = get().telegramUser;
+      if (telegramUser) {
+        try {
+          const verifiedRun = await startVerifiedRun({
+            telegramUser: {
+              id: telegramUser.id,
+              username: telegramUser.username,
+              first_name: telegramUser.first_name,
+              last_name: telegramUser.last_name,
+            },
+            difficulty: config.difficulty,
+            level: config.level,
+            challengeMode: 'weekly',
+            requestedSeed: config.seed,
+          });
+          verifiedRunId = verifiedRun.runId;
+        } catch (error: any) {
+          sendTelemetry({
+            type: 'error',
+            source: 'weekly-run-session',
+            message: error.message || 'Failed to create weekly verified run',
+            metadata: { difficulty: config.difficulty, level: config.level },
+          });
+        }
+      }
+      const newGame = createLevelGame(config.difficulty, config.level, config.seed);
       set({
         currentGame:               newGame,
         selectedDifficulty:        config.difficulty,
@@ -897,7 +990,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         showWinModal:              false,
         currentEra:                config.difficulty,
         currentLevel:              config.level,
-        currentStage:              1,
         combo:                     { count: 0, multiplier: 1 },
         mismatches:                0,
         maxCombo:                  0,
@@ -923,6 +1015,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         hiddenCardIndices:         [],
         pulseScanRow:              null,
         boardRotationDeg:          0,
+        verifiedRunId,
       });
     } catch (error) {
       console.error('Failed to start weekly challenge:', error);
@@ -933,6 +1026,35 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clearNewAchievements: () => set({ newlyUnlockedAchievements: [] }),
 
   loadLevelProgress: () => {
+    set({ levelProgress: getAllLevelProgress(), streak: loadStreak(), relicRewards: getRelicRewards() });
+  },
+
+  hydratePlayerProgress: async () => {
+    const telegramUser = get().telegramUser;
+    if (!telegramUser) {
+      set({ levelProgress: getAllLevelProgress(), streak: loadStreak(), relicRewards: getRelicRewards() });
+      return;
+    }
+
+    try {
+      const remote = await fetchPlayerProgress({
+        id: telegramUser.id,
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+      });
+
+      if (remote.length > 0) {
+        remote.forEach((entry) => saveLevelProgress(entry));
+      }
+    } catch (error: any) {
+      sendTelemetry({
+        type: 'error',
+        source: 'progress-load',
+        message: error.message || 'Failed to load remote progression',
+      });
+    }
+
     set({ levelProgress: getAllLevelProgress(), streak: loadStreak(), relicRewards: getRelicRewards() });
   },
 

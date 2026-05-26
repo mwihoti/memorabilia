@@ -29,7 +29,6 @@
     "noImplicitReturns": false,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src"],
+  "include": ["src", "../shared/**/*.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
-

@@ -21,9 +21,12 @@ export interface SubmitScoreParams {
   };
   score: number;
   difficulty: number;
+  level: number;
   moves: number;
   timeSeconds: number;
   stars: number;
+  replayMoves: Array<{ cardIndex: number; timestamp: number }>;
+  runId?: number | null;
 }
 
 export interface SubmitScoreResult {
@@ -31,6 +34,10 @@ export interface SubmitScoreResult {
   rank?: number;
   totalPlayers?: number;
   isNewBest?: boolean;
+  verifiedScore?: number;
+  verifiedMoves?: number;
+  verifiedTimeSeconds?: number;
+  adjusted?: boolean;
   message?: string;
 }
 
@@ -104,4 +111,90 @@ export async function fetchPlayerStats(telegramId: number): Promise<PlayerStatsR
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Failed to fetch player stats');
   return res.json();
+}
+
+export interface ProgressRow {
+  era: number;
+  level: number;
+  completed: boolean;
+  bestScore: number;
+  bestTime: number;
+  bestMedal: 'gold' | 'silver' | 'bronze' | 'none';
+  stars: number;
+  completedAt?: number;
+}
+
+export async function fetchPlayerProgress(telegramUser: SubmitScoreParams['telegramUser']): Promise<ProgressRow[]> {
+  const res = await fetch(`${BASE}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'load', telegramUser, initData: getInitData() }),
+  });
+
+  if (!res.ok) throw new Error('Failed to fetch player progression');
+  const payload = await res.json();
+  return payload.progress ?? [];
+}
+
+export async function savePlayerProgress(
+  telegramUser: SubmitScoreParams['telegramUser'],
+  progress: ProgressRow
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'save', telegramUser, progress, initData: getInitData() }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || 'Failed to save player progression');
+  }
+}
+
+export interface StartRunParams {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  difficulty: number;
+  level: number;
+  challengeMode: 'standard' | 'daily' | 'weekly';
+  requestedSeed?: number;
+}
+
+export interface StartRunResult {
+  success: boolean;
+  runId: number;
+  seed: number;
+}
+
+export async function startVerifiedRun(params: StartRunParams): Promise<StartRunResult> {
+  const res = await fetch(`${BASE}/api/run-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...params, initData: getInitData() }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || 'Failed to create verified run');
+  }
+
+  return res.json();
+}
+
+export async function sendTelemetry(payload: {
+  type: 'event' | 'error';
+  source: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await fetch(`${BASE}/api/telemetry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+  } catch {
+    // Best-effort only
+  }
 }

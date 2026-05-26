@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { useGameStore } from '../store/gameStore';
-import { calculateStars, calculateGrade, DIFFICULTY_ORDER, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getMaxLevelForEra, getMovesNeededForThreeStars, getStageCountForLevel, getTimeMedal, getTotalLevelCount } from '../types';
+import { calculateStars, calculateGrade, DIFFICULTY_ORDER, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getMaxLevelForEra, getMovesNeededForThreeStars, getTimeMedal, getTotalLevelCount } from '../types';
 import { hapticNotification } from '../telegram/telegram';
 import { isScoreEligibleForNFT } from '../cartridge/config';
 import { fetchPlayerStats } from '../lib/api';
@@ -36,7 +36,6 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     theme,
     currentEra,
     currentLevel,
-    currentStage,
     streak,
     levelProgress,
     newlyUnlockedAchievements,
@@ -91,11 +90,9 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
 
   // Ghost replay availability
   const ghostReplay = currentEra !== null
-    ? loadGhostReplay(currentEra, currentLevel, currentStage)
+    ? loadGhostReplay(currentEra, currentLevel)
     : null;
 
-  const stageCount = currentEra !== null ? getStageCountForLevel(currentEra, currentLevel) : 1;
-  const hasNextStage = stageCount > 1 && currentStage < stageCount;
   const nextLevelConfig = levelConfig && currentEra !== null && currentLevel < getMaxLevelForEra(currentEra)
     ? ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel] ?? null
     : null;
@@ -103,7 +100,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
   const totalLevels = getTotalLevelCount();
   const allLevelsComplete = levelProgress.filter((lp) => lp.completed).length >= totalLevels;
 
-  const eraUnlockCheckpoint = currentEra !== null ? Math.min(4, getMaxLevelForEra(currentEra)) : 0;
+  const eraUnlockCheckpoint = currentEra !== null ? getMaxLevelForEra(currentEra) : 0;
   const justCompletedEraLevel3 =
     levelConfig !== null &&
     currentLevel === eraUnlockCheckpoint &&
@@ -249,9 +246,6 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                   Exhibition Complete!
                 </h2>
                 <p className="text-white/50 text-xs mt-0.5">{displayName} · {diffLabel}</p>
-                {levelConfig && stageCount > 1 && (
-                  <p className="text-white/35 text-[11px] mt-1">Stage {currentStage}/{stageCount}</p>
-                )}
               </div>
 
               {/* Stars */}
@@ -437,13 +431,11 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                   transition={{ delay: 0.7 }}
                   className="space-y-1.5"
                 >
-                  {(hasNextStage || nextLevelConfig) && (
+                  {nextLevelConfig && (
                     <div className="flex items-center gap-2 px-4 py-2.5 bg-white/5 rounded-xl text-sm">
                       <span>⬆️</span>
                       <span className="text-white/70">
-                        {hasNextStage
-                          ? <>Next Stage: <span className="font-bold text-white">{currentStage + 1}/{stageCount}</span></>
-                          : <>Next Level: <span className="font-bold text-white">{nextLevelConfig.label}</span></>}
+                        <>Next Level: <span className="font-bold text-white">{nextLevelConfig.label}</span></>
                       </span>
                     </div>
                   )}
@@ -571,7 +563,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
               {/* Actions */}
               <div className="space-y-2">
                 {/* Next Level button — shown if next level exists and not all levels done */}
-                {(hasNextStage || nextLevelConfig) && onNextLevel && !allLevelsComplete && (
+                {nextLevelConfig && onNextLevel && !allLevelsComplete && (
                   <motion.button
                     onClick={onNextLevel}
                     className={`w-full py-3.5 bg-gradient-to-r ${themeAccent.btn} text-white font-bold rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2`}
@@ -581,7 +573,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                     transition={{ delay: 0.8 }}
                   >
                     <span>⬆️</span>
-                    <span>{hasNextStage ? `Next Stage: ${currentStage + 1}/${stageCount}` : `Next Level: ${nextLevelConfig?.label ?? 'Continue'}`}</span>
+                    <span>{`Next Level: ${nextLevelConfig?.label ?? 'Continue'}`}</span>
                   </motion.button>
                 )}
 
@@ -591,7 +583,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                     className="flex-1 py-3.5 bg-white/10 hover:bg-white/15 rounded-xl font-bold text-sm text-white/80 transition-all"
                     whileTap={{ scale: 0.97 }}
                   >
-                    {hasNextStage || nextLevelConfig ? 'Choose Level' : 'New Exhibition'}
+                    {nextLevelConfig ? 'Choose Level' : 'New Exhibition'}
                   </motion.button>
 
                   <motion.button

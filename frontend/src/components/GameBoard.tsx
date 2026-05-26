@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getTimeMedal } from '../types';
+import { getPlayerSettings, getPreviewMultiplier } from '../store/settings';
 import Card from './Card';
 import ComboDisplay from './ComboDisplay';
 
@@ -16,7 +17,6 @@ export default function GameBoard() {
     mismatches,
     currentEra,
     currentLevel,
-    currentStage,
     streak,
     shieldCharges,
     hintCharges,
@@ -51,10 +51,11 @@ export default function GameBoard() {
 
     // Determine preview duration from level config if in level mode
     let previewDurationMs = 3000;
+    const settings = getPlayerSettings();
     if (currentEra !== null) {
       const levelConfig = ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1];
       if (levelConfig) {
-        previewDurationMs = levelConfig.previewDuration;
+        previewDurationMs = Math.round(levelConfig.previewDuration * getPreviewMultiplier(settings.previewLength));
       }
     }
 

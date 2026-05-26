@@ -1,4 +1,5 @@
 import { GameState, Difficulty, Card, ERA_LEVEL_CONFIGS } from '../types';
+import { buildLevelCardValues } from '../../../shared/gameRules.js';
 
 // ── Large era-specific emoji pools (20+ each, no duplicates) ─────────────────
 
@@ -357,7 +358,7 @@ export function seededShuffle<T>(array: T[], seed: number): T[] {
 
 // ── Level-aware game creation ─────────────────────────────────────────────────
 
-export function createLevelGame(era: Difficulty, level: number, seed?: number, stage = 1): GameState {
+export function createLevelGame(era: Difficulty, level: number, seed?: number): GameState {
   const config     = ERA_LEVEL_CONFIGS[era][level - 1];
   const { pairCount } = config;
 
@@ -367,25 +368,22 @@ export function createLevelGame(era: Difficulty, level: number, seed?: number, s
     ? seededShuffle([...pool], seed).slice(0, pairCount)
     : pickRandom(pool, pairCount);
 
-  // Build paired values [0,0,1,1,...,n,n]
-  const values: number[] = [];
-  for (let i = 0; i < pairCount; i++) {
-    values.push(i, i);
-  }
-
-  const candidateColumns = getCandidateColumns(pairCount * 2);
-  const stageSeedOffset = stage * 101;
-  const baseValues = seed !== undefined
-    ? shuffleValuesAvoidingAdjacency(values, candidateColumns, config.minimumPairDistance ?? 2, mulberry32(seed + 1 + stageSeedOffset))
-    : shuffleValuesAvoidingAdjacency(values, candidateColumns, config.minimumPairDistance ?? 2);
-  const arrangedValues = arrangeValuesByPattern(
-    baseValues,
-    candidateColumns[candidateColumns.length - 1],
-    config.pattern,
-  );
-  const shuffledValues = violatesSpacing(arrangedValues, candidateColumns, config.minimumPairDistance ?? 2)
-    ? baseValues
-    : arrangedValues;
+  const shuffledValues = seed !== undefined
+    ? buildLevelCardValues(era, level, seed)
+    : (() => {
+        const values: number[] = [];
+        for (let i = 0; i < pairCount; i++) values.push(i, i);
+        const candidateColumns = getCandidateColumns(pairCount * 2);
+        const baseValues = shuffleValuesAvoidingAdjacency(values, candidateColumns, config.minimumPairDistance ?? 2);
+        const arrangedValues = arrangeValuesByPattern(
+          baseValues,
+          candidateColumns[candidateColumns.length - 1],
+          config.pattern,
+        );
+        return violatesSpacing(arrangedValues, candidateColumns, config.minimumPairDistance ?? 2)
+          ? baseValues
+          : arrangedValues;
+      })();
 
   const cards: Card[] = shuffledValues.map((value, index) => ({
     id: index,

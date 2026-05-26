@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Difficulty, ERA_LEVEL_CONFIGS, getDifficultyMeta } from '../types';
+import { getPlayerSettings, getPreviewMultiplier } from '../store/settings';
 
 type IntroMode = 'opening' | 'splash' | 'level';
 
@@ -29,7 +30,8 @@ function useIntroDuration(mode: IntroMode, reducedMotion: boolean): number {
 
 export default function IntroCinematic({ mode, open, era, level, onComplete }: IntroCinematicProps) {
   const reducedMotion = useReducedMotion();
-  const duration = useIntroDuration(mode, reducedMotion);
+  const settings = getPlayerSettings();
+  const duration = useIntroDuration(mode, reducedMotion || settings.reducedMotion);
 
   const difficultyMeta = era ? getDifficultyMeta(era) : null;
   const levelConfig = era && level ? ERA_LEVEL_CONFIGS[era]?.[level - 1] ?? null : null;
@@ -41,6 +43,7 @@ export default function IntroCinematic({ mode, open, era, level, onComplete }: I
           mode={mode}
           duration={duration}
           reducedMotion={!!reducedMotion}
+          forceReducedMotion={settings.reducedMotion}
           difficultyMeta={difficultyMeta}
           levelConfig={levelConfig}
           level={level}
@@ -55,6 +58,7 @@ function CinematicBody({
   mode,
   duration,
   reducedMotion,
+  forceReducedMotion,
   difficultyMeta,
   levelConfig,
   level,
@@ -63,6 +67,7 @@ function CinematicBody({
   mode: IntroMode;
   duration: number;
   reducedMotion: boolean;
+  forceReducedMotion: boolean;
   difficultyMeta: ReturnType<typeof getDifficultyMeta> | null;
   levelConfig: (typeof ERA_LEVEL_CONFIGS)[Difficulty][number] | null;
   level?: number;
@@ -78,7 +83,7 @@ function CinematicBody({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: reducedMotion ? 0.15 : 0.35 }}
+      transition={{ duration: reducedMotion || forceReducedMotion ? 0.15 : 0.35 }}
       className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden"
       style={{ background: 'radial-gradient(circle at top, rgba(255,255,255,0.12), rgba(2,6,23,0.97) 55%)' }}
     >
@@ -210,7 +215,7 @@ function CinematicBody({
                 {levelConfig.cardCount} cards
               </span>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/75">
-                {Math.floor(levelConfig.previewDuration / 1000)}s preview
+                  {Math.floor((levelConfig.previewDuration * getPreviewMultiplier(getPlayerSettings().previewLength)) / 1000)}s preview
               </span>
               {levelConfig.boss && (
                 <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300">

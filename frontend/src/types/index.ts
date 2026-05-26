@@ -1,3 +1,16 @@
+import {
+  calculateStars as calculateSharedStars,
+  DIFFICULTY_META as SHARED_DIFFICULTY_META,
+  DIFFICULTY_ORDER as SHARED_DIFFICULTY_ORDER,
+  getDifficultyMeta as getSharedDifficultyMeta,
+  getEraLevelRules,
+  getEraUnlockCheckpoint,
+  getMaxLevelForEra as getSharedMaxLevelForEra,
+  getTimeBonusScore as getSharedTimeBonusScore,
+  getTimeMedal as getSharedTimeMedal,
+  getTotalLevelCount as getSharedTotalLevelCount,
+} from '../../../shared/gameRules.js';
+
 // Game Types
 export interface Card {
   id: number;
@@ -30,53 +43,22 @@ export interface DifficultyMeta {
 }
 
 export const DIFFICULTY_ORDER: Difficulty[] = [
-  Difficulty.Easy,
-  Difficulty.Medium,
-  Difficulty.Hard,
-  Difficulty.Expert,
-  Difficulty.Master,
+  ...Array.from(SHARED_DIFFICULTY_ORDER) as Difficulty[],
 ];
 
 export const DIFFICULTY_META: Record<Difficulty, DifficultyMeta> = {
-  [Difficulty.Easy]: {
-    id: Difficulty.Easy,
-    label: 'Ancient Era',
-    shortLabel: 'Ancient',
-    icon: '🏺',
-    legacyDescription: '6 artifacts · 12 cards',
-  },
-  [Difficulty.Medium]: {
-    id: Difficulty.Medium,
-    label: 'Medieval Times',
-    shortLabel: 'Medieval',
-    icon: '⚔️',
-    legacyDescription: '10 artifacts · 20 cards',
-  },
-  [Difficulty.Hard]: {
-    id: Difficulty.Hard,
-    label: 'Modern Era',
-    shortLabel: 'Modern',
-    icon: '🚀',
-    legacyDescription: '15 artifacts · 30 cards',
-  },
-  [Difficulty.Expert]: {
-    id: Difficulty.Expert,
-    label: 'Future Nexus',
-    shortLabel: 'Future',
-    icon: '🛸',
-    legacyDescription: '16 artifacts · 32 cards',
-  },
-  [Difficulty.Master]: {
-    id: Difficulty.Master,
-    label: 'Mythic Vault',
-    shortLabel: 'Mythic',
-    icon: '🐲',
-    legacyDescription: '16 artifacts · 32 cards',
-  },
+  [Difficulty.Easy]: { ...SHARED_DIFFICULTY_META[Difficulty.Easy], legacyDescription: '50 main levels' },
+  [Difficulty.Medium]: { ...SHARED_DIFFICULTY_META[Difficulty.Medium], legacyDescription: '50 main levels' },
+  [Difficulty.Hard]: { ...SHARED_DIFFICULTY_META[Difficulty.Hard], legacyDescription: '100 main levels' },
+  [Difficulty.Expert]: { ...SHARED_DIFFICULTY_META[Difficulty.Expert], legacyDescription: '100 main levels' },
+  [Difficulty.Master]: { ...SHARED_DIFFICULTY_META[Difficulty.Master], legacyDescription: '100 main levels' },
 };
 
 export function getDifficultyMeta(difficulty: Difficulty): DifficultyMeta {
-  return DIFFICULTY_META[difficulty];
+  return {
+    ...getSharedDifficultyMeta(difficulty),
+    legacyDescription: DIFFICULTY_META[difficulty].legacyDescription,
+  };
 }
 
 export interface GameState {
@@ -277,11 +259,7 @@ export const GAME_CONFIGS: Record<Difficulty, GameConfig> = {
 
 // Star rating calculation
 export function calculateStars(moves: number, optimalMoves: number): number {
-  const moveRatio = (moves * 100) / optimalMoves;
-  
-  if (moveRatio <= 110) return 3;
-  if (moveRatio <= 150) return 2;
-  return 1;
+  return calculateSharedStars(moves, optimalMoves);
 }
 
 // Grade calculation
@@ -309,8 +287,7 @@ export function getCardEmoji(value: number): string {
 
 export interface EraLevel {
   era: Difficulty;
-  level: number; // 1-5
-  stageCount: number;
+  level: number;
   cardCount: number;
   pairCount: number;
   optimalMoves: number;
@@ -319,11 +296,11 @@ export interface EraLevel {
   timeLimitSilver: number;
   timeLimitBronze: number;
   label: string;
-  mechanics?: string[];
-  boss?: boolean;
+  mechanics: string[];
+  boss: boolean;
   relic?: string;
-  minimumPairDistance?: number;
-  pattern?: 'zigzag' | 'columns' | 'spiral';
+  minimumPairDistance: number;
+  pattern: 'zigzag' | 'columns' | 'spiral';
 }
 
 export type TimeMedal = 'gold' | 'silver' | 'bronze' | 'none';
@@ -332,7 +309,6 @@ export interface LevelProgress {
   era: Difficulty;
   level: number;
   completed: boolean;
-  highestStageCompleted: number;
   bestScore: number;
   bestTime: number;     // seconds
   bestMedal: TimeMedal;
@@ -386,7 +362,6 @@ export interface GhostReplay {
   gameId: number;
   era: Difficulty;
   level: number;
-  stage: number;
   moves: ReplayMove[];
   totalTime: number; // ms
   score: number;
@@ -430,90 +405,12 @@ export interface RunAnalytics {
 
 // ── Era Level Configs ─────────────────────────────────────────────────────────
 
-const ERA_LEVEL_TITLES: Record<Difficulty, string[]> = {
-  [Difficulty.Easy]:   ['Apprentice', 'Scholar', 'Sage', 'Elder', 'Oracle'],
-  [Difficulty.Medium]: ['Squire', 'Knight', 'Baron', 'Count', 'Lord'],
-  [Difficulty.Hard]:   ['Intern', 'Engineer', 'Senior', 'Principal', 'Legend'],
-  [Difficulty.Expert]: ['Scout', 'Navigator', 'Cipher', 'Operator', 'Admiral'],
-  [Difficulty.Master]: ['Seeker', 'Warden', 'Invoker', 'Titan', 'Dragonheart'],
-};
-
-const LEVEL_COUNT_BY_ERA: Record<Difficulty, number> = {
-  [Difficulty.Easy]: 50,
-  [Difficulty.Medium]: 50,
-  [Difficulty.Hard]: 100,
-  [Difficulty.Expert]: 100,
-  [Difficulty.Master]: 100,
-};
-
-function getLevelLabel(era: Difficulty, level: number): string {
-  const titles = ERA_LEVEL_TITLES[era];
-  const tier = Math.ceil(level / 10);
-  const title = titles[Math.min(tier - 1, titles.length - 1)];
-  return `${title} ${level}`;
-}
-
-function getLevelMechanics(era: Difficulty, level: number): string[] {
-  const progressBand = Math.ceil(level / 10);
-  const common = [
-    'Pattern-based board',
-    progressBand >= 2 ? 'Hint charge unlocked' : 'Memory warmup',
-    progressBand >= 3 ? 'Freeze burst unlocked' : 'Clean reveal pacing',
-  ];
-
-  if (era === Difficulty.Easy) return progressBand >= 4 ? ['Sandstorm veils', ...common] : common;
-  if (era === Difficulty.Medium) return progressBand >= 4 ? ['Shielded mismatch buffer', ...common] : common;
-  if (era === Difficulty.Hard) return progressBand >= 4 ? ['Pulse scan preview', ...common] : common;
-  if (era === Difficulty.Expert) return progressBand >= 4 ? ['Decoy pressure rises', ...common] : common;
-  return progressBand >= 4 ? ['Mythic pressure spikes', ...common] : common;
-}
-
-function buildEraLevels(era: Difficulty): EraLevel[] {
-  const totalLevels = LEVEL_COUNT_BY_ERA[era];
-
-  return Array.from({ length: totalLevels }, (_, index) => {
-    const level = index + 1;
-    const progress = index / Math.max(totalLevels - 1, 1);
-    const difficultyBias =
-      era === Difficulty.Easy ? 0 :
-      era === Difficulty.Medium ? 1 :
-      era === Difficulty.Hard ? 2 :
-      era === Difficulty.Expert ? 3 : 4;
-    const pairCount = Math.min(16, 4 + Math.floor(index / 8) + difficultyBias);
-    const cardCount = pairCount * 2;
-    const previewDuration = Math.max(1000, Math.round(5000 - progress * 3800 - difficultyBias * 250));
-    const goldBase = 55 + pairCount * 7 + difficultyBias * 8;
-    const boss = level % 10 === 0;
-    const minimumPairDistance = Math.min(5, 2 + Math.floor(index / 20) + Math.floor(difficultyBias / 2));
-    const pattern = boss ? 'spiral' : level % 3 === 0 ? 'columns' : 'zigzag';
-
-    return {
-      era,
-      level,
-      stageCount: 1,
-      cardCount,
-      pairCount,
-      optimalMoves: cardCount,
-      previewDuration,
-      timeLimitGold: goldBase,
-      timeLimitSilver: Math.round(goldBase * 1.5),
-      timeLimitBronze: Math.round(goldBase * 2),
-      label: getLevelLabel(era, level),
-      mechanics: getLevelMechanics(era, level),
-      boss,
-      relic: boss ? `${getDifficultyMeta(era).shortLabel} Relic ${level / 10}` : undefined,
-      minimumPairDistance,
-      pattern,
-    };
-  });
-}
-
 export const ERA_LEVEL_CONFIGS: Record<Difficulty, EraLevel[]> = {
-  [Difficulty.Easy]:   buildEraLevels(Difficulty.Easy),
-  [Difficulty.Medium]: buildEraLevels(Difficulty.Medium),
-  [Difficulty.Hard]:   buildEraLevels(Difficulty.Hard),
-  [Difficulty.Expert]: buildEraLevels(Difficulty.Expert),
-  [Difficulty.Master]: buildEraLevels(Difficulty.Master),
+  [Difficulty.Easy]: getEraLevelRules(Difficulty.Easy) as EraLevel[],
+  [Difficulty.Medium]: getEraLevelRules(Difficulty.Medium) as EraLevel[],
+  [Difficulty.Hard]: getEraLevelRules(Difficulty.Hard) as EraLevel[],
+  [Difficulty.Expert]: getEraLevelRules(Difficulty.Expert) as EraLevel[],
+  [Difficulty.Master]: getEraLevelRules(Difficulty.Master) as EraLevel[],
 };
 
 // ── Helper functions ──────────────────────────────────────────────────────────
@@ -526,31 +423,11 @@ export function getComboMultiplier(consecutiveMatches: number): number {
 }
 
 export function getTimeMedal(elapsed: number, level: EraLevel): TimeMedal {
-  if (elapsed <= level.timeLimitGold)   return 'gold';
-  if (elapsed <= level.timeLimitSilver) return 'silver';
-  if (elapsed <= level.timeLimitBronze) return 'bronze';
-  return 'none';
+  return getSharedTimeMedal(elapsed, level);
 }
 
 export function getTimeBonusScore(elapsed: number, level: EraLevel): number {
-  const medal = getTimeMedal(elapsed, level);
-  if (medal === 'none') return 0;
-
-  let base: number;
-  if (medal === 'gold') {
-    base = 500;
-    // Last 10 seconds of gold window: 2x multiplier
-    const remainingGoldTime = level.timeLimitGold - elapsed;
-    if (remainingGoldTime <= 10) {
-      base *= 2;
-    }
-  } else if (medal === 'silver') {
-    base = 250;
-  } else {
-    base = 100;
-  }
-
-  return base;
+  return getSharedTimeBonusScore(elapsed, level);
 }
 
 export function getMovesNeededForThreeStars(optimalMoves: number): number {
@@ -574,30 +451,16 @@ export function isEraUnlocked(era: Difficulty, levelProgress: LevelProgress[]): 
   if (index <= 0) return true;
 
   const previousEra = DIFFICULTY_ORDER[index - 1];
-  const requiredLevel = Math.min(4, ERA_LEVEL_CONFIGS[previousEra].length);
+  const requiredLevel = getEraUnlockCheckpoint(era);
   return levelProgress.some(
     (lp) => lp.era === previousEra && lp.level >= requiredLevel && lp.completed
   );
 }
 
 export function getMaxLevelForEra(era: Difficulty): number {
-  return ERA_LEVEL_CONFIGS[era]?.length ?? 0;
-}
-
-export function getStageCountForLevel(era: Difficulty, level: number): number {
-  return ERA_LEVEL_CONFIGS[era]?.[level - 1]?.stageCount ?? 1;
-}
-
-export function getNextStageForLevel(
-  era: Difficulty,
-  level: number,
-  levelProgress: LevelProgress[]
-): number {
-  const progress = levelProgress.find((lp) => lp.era === era && lp.level === level);
-  const stageCount = getStageCountForLevel(era, level);
-  return Math.min((progress?.highestStageCompleted ?? 0) + 1, stageCount);
+  return getSharedMaxLevelForEra(era);
 }
 
 export function getTotalLevelCount(): number {
-  return DIFFICULTY_ORDER.reduce((sum, era) => sum + getMaxLevelForEra(era), 0);
+  return getSharedTotalLevelCount();
 }

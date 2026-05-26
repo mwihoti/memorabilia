@@ -158,7 +158,7 @@ async function leaderboardText() {
   try {
     const res = await fetch(`${API_URL}/api/leaderboard?limit=5`);
     if (!res.ok) throw new Error('fetch failed');
-    const data = await res.json();
+    const data: any = await res.json();
     const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
     if (!data?.entries?.length) {
       return '🏆 <b>Hall of Fame</b>\n\nNo scores yet! Be the first to play 🎮';

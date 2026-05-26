@@ -16,9 +16,9 @@ Full Game + Dojo Telegram SDK
 
 ## Project Summary
 
-Memorabilia is a fully on-chain memory card matching game built on Starknet using the Dojo framework. Players flip cards, find matching pairs, earn medals, unlock levels, and climb a global leaderboard — all inside Telegram with no blockchain knowledge required.
+Memorabilia is a Telegram Mini App memory game with optional Starknet integration. Players flip cards, find matching pairs, earn medals, unlock levels, and climb a verified leaderboard.
 
-The game features a custom Dojo Telegram SDK enabling gasless transactions, Account Abstraction for seamless onboarding, and a rich progression system with 3 eras, 15 levels, daily challenges, ghost replays, combo multipliers, and NFT minting via Cartridge.
+The game now ships with 5 eras and 400 main levels total: Ancient Era (50), Medieval Times (50), Modern Era (100), Future Nexus (100), and Mythic Vault (100). It also includes daily and weekly challenges, ghost replays, relic rewards, and player dashboards.
 
 ---
 
@@ -38,7 +38,7 @@ The game features a custom Dojo Telegram SDK enabling gasless transactions, Acco
 ## Features
 
 ### Gameplay
-- **3 Eras × 5 Levels** — Ancient (🏺), Medieval (⚔️), Modern (🚀); 15 levels total with sequential unlock (must complete level N before N+1)
+- **5 Eras, 400 Main Levels** — Ancient (50), Medieval (50), Modern (100), Future (100), Mythic (100); each level unlocks sequentially and each era unlocks after fully clearing the previous era
 - **Card counts** — 8, 12, 16, 20, 24 cards per level; grids always use even column counts (4 or 6)
 - **Preview phase** — memorise the board before the clock starts (3s → 0s as levels increase)
 - **Time medals** — Gold / Silver / Bronze based on completion speed
@@ -46,7 +46,7 @@ The game features a custom Dojo Telegram SDK enabling gasless transactions, Acco
 - **Daily challenges** — a new seeded level every day
 - **Ghost replay** — record your best run and watch it back with accurate emoji layout
 - **"Next Level" flow** — after completing a level, go straight to the next or browse levels
-- **All levels complete** — celebratory popup when all 15 levels are mastered
+- **All levels complete** — celebratory popup when all 400 levels are mastered
 
 ### Progression & Meta
 - **15 Achievements** — speed runs, perfect memory, streaks, era mastery, and more
@@ -211,7 +211,7 @@ TELEGRAM_BOT_SECRET=      # Webhook secret
 6. Study the cards during the preview window, then flip pairs to find matches
 7. Match all pairs to win — faster and fewer moves = better medal and score
 8. After each level you can jump directly to the next level or browse the level map
-9. Complete all 15 levels to unlock the "More Games Coming" celebration
+9. Complete all 400 levels to unlock the full mastery celebration
 
 ### Scoring
 
@@ -310,7 +310,7 @@ Frontend is deployed automatically to Vercel on every push to `main`.
 ## Roadmap
 
 - [x] Core memory game with Demo mode
-- [x] 3 Eras × 5 Levels with sequential unlocking
+- [x] 5 eras with 400 main levels and sequential unlocking
 - [x] Time medals (Gold / Silver / Bronze)
 - [x] Combo multiplier system
 - [x] Daily challenges

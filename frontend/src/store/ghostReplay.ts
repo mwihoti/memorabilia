@@ -4,8 +4,8 @@ const GHOST_REPLAYS_KEY = 'memorabilia_ghost_replays';
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
-function replayKey(era: Difficulty, level: number, stage = 1): string {
-  return `${era}-${level}-${stage}`;
+function replayKey(era: Difficulty, level: number): string {
+  return `${era}-${level}`;
 }
 
 function loadAllReplays(): Record<string, GhostReplay> {
@@ -27,9 +27,9 @@ function saveAllReplays(replays: Record<string, GhostReplay>): void {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function loadGhostReplay(era: Difficulty, level: number, stage = 1): GhostReplay | null {
+export function loadGhostReplay(era: Difficulty, level: number): GhostReplay | null {
   const all = loadAllReplays();
-  return all[replayKey(era, level, stage)] ?? null;
+  return all[replayKey(era, level)] ?? null;
 }
 
 /**
@@ -38,7 +38,7 @@ export function loadGhostReplay(era: Difficulty, level: number, stage = 1): Ghos
  */
 export function saveGhostReplayIfBest(replay: GhostReplay): boolean {
   const all      = loadAllReplays();
-  const key      = replayKey(replay.era, replay.level, replay.stage ?? 1);
+  const key      = replayKey(replay.era, replay.level);
   const existing = all[key];
 
   if (!existing || replay.score > existing.score) {
@@ -54,11 +54,10 @@ export function buildReplay(
   gameId: number,
   era: Difficulty,
   level: number,
-  stage: number,
   moves: ReplayMove[],
   totalTimeMs: number,
   score: number,
   emojis?: string[]
 ): GhostReplay {
-  return { gameId, era, level, stage, moves, totalTime: totalTimeMs, score, emojis };
+  return { gameId, era, level, moves, totalTime: totalTimeMs, score, emojis };
 }

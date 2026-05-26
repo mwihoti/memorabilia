@@ -1,5 +1,5 @@
 // Local storage for player scores and stats in demo mode
-import { DIFFICULTY_ORDER, GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal, RelicReward, getDifficultyMeta, getStageCountForLevel } from '../types';
+import { DIFFICULTY_ORDER, GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal, RelicReward, getDifficultyMeta } from '../types';
 
 const STORAGE_KEY = 'memorabilia_player_data';
 const LEADERBOARD_KEY = 'memorabilia_leaderboard';
@@ -255,11 +255,8 @@ export function getLeaderboardStats() {
 export function getAllLevelProgress(): LevelProgress[] {
   try {
     const data = localStorage.getItem(LEVEL_PROGRESS_KEY);
-    const parsed = data ? JSON.parse(data) as LevelProgress[] : [];
-    return parsed.map((entry) => ({
-      ...entry,
-      highestStageCompleted: entry.highestStageCompleted ?? (entry.completed ? getStageCountForLevel(entry.era, entry.level) : 0),
-    }));
+    const parsed = data ? JSON.parse(data) as Array<LevelProgress & { highestStageCompleted?: number }> : [];
+    return parsed.map(({ highestStageCompleted: _unused, ...entry }) => entry);
   } catch {
     return [];
   }
@@ -288,7 +285,6 @@ export function saveLevelProgress(incoming: LevelProgress): void {
     era:       incoming.era,
     level:     incoming.level,
     completed: incoming.completed || (existing?.completed ?? false),
-    highestStageCompleted: Math.max(incoming.highestStageCompleted ?? 0, existing?.highestStageCompleted ?? 0),
     bestScore: Math.max(incoming.bestScore, existing?.bestScore ?? 0),
     bestTime:  existing?.bestTime
       ? Math.min(incoming.bestTime, existing.bestTime)
@@ -301,7 +297,7 @@ export function saveLevelProgress(incoming: LevelProgress): void {
   if (index !== -1) {
     all[index] = merged;
   } else {
-    all.push({ ...merged, highestStageCompleted: merged.highestStageCompleted ?? 0 });
+    all.push(merged);
   }
 
   saveAllLevelProgress(all);
@@ -350,63 +346,5 @@ export function saveRelicReward(reward: RelicReward): void {
     localStorage.setItem(RELIC_REWARDS_KEY, JSON.stringify([...all, reward]));
   } catch (error) {
     console.error('Failed to save relic reward:', error);
-  }
-}
-
-// ── Legacy helpers ────────────────────────────────────────────────────────────
-
-/**
- * Clear all data (for testing)
- */
-export function clearAllData() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(LEADERBOARD_KEY);
-    console.log('🗑️ Cleared all player and leaderboard data from localStorage');
-  } catch (error) {
-    console.error('Failed to clear data:', error);
-  }
-}
-
-/**
- * Create test player (for debugging)
- */
-export function createTestPlayer() {
-  try {
-    const testPlayer: LocalPlayerData = {
-      telegramId: 452595366,
-      playerName: 'Dan🐾',
-      totalGames: 1,
-      totalWins: 1,
-      bestScore: 13680,
-      averageScore: 13680,
-      joinedAt: Date.now() - 3600000, // 1 hour ago
-      lastPlayed: Date.now(),
-    };
-    
-    const players = getAllPlayers();
-    players.push(testPlayer);
-    saveAllPlayers(players);
-    
-    // Add test leaderboard entry
-    const entry: LocalLeaderboardEntry = {
-      rank: 1,
-      playerName: 'Dan🐾',
-      telegramId: 452595366,
-      score: 13680,
-      difficulty: 'Modern Era',
-      moves: 15,
-      time: 120,
-      achievedAt: Date.now(),
-    };
-    
-    const leaderboard = getLeaderboard();
-    leaderboard.push(entry);
-    saveLeaderboard(leaderboard);
-    
-    console.log('✅ Test player created:', testPlayer);
-    return testPlayer;
-  } catch (error) {
-    console.error('Failed to create test player:', error);
   }
 }

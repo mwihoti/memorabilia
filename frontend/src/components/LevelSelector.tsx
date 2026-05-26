@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import {
   Difficulty, ERA_LEVEL_CONFIGS, EraLevel, LevelProgress,
-  DIFFICULTY_ORDER, getDifficultyMeta, isEraUnlocked, isLevelUnlocked, TimeMedal,
+  DIFFICULTY_ORDER, getDifficultyMeta, getMaxLevelForEra, isEraUnlocked, isLevelUnlocked, TimeMedal,
 } from '../types';
 import { loadDailyChallenge, getDailyChallengeConfig, isDailyChallengeCompleted } from '../store/dailyChallenge';
 import { hapticImpact } from '../telegram/telegram';
@@ -42,7 +42,7 @@ const ERAS: EraConfig[] = [
       label: meta.label,
       icon: meta.icon,
       gradient: gradients[index] ?? gradients[gradients.length - 1],
-      lockedBy: index === 0 ? '' : `${getDifficultyMeta(DIFFICULTY_ORDER[index - 1]).label} Level 4`,
+      lockedBy: index === 0 ? '' : `${getDifficultyMeta(DIFFICULTY_ORDER[index - 1]).label} Level ${getMaxLevelForEra(DIFFICULTY_ORDER[index - 1])}`,
     };
   }),
 ];
