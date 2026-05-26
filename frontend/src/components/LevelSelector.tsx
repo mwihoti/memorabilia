@@ -14,6 +14,7 @@ import DailyChallengeCard from './DailyChallengeCard';
 interface LevelSelectorProps {
   onStart: (era: Difficulty, level: number, isDailyChallenge?: boolean) => void;
   onStartWeekly: () => void;
+  onCreateChallenge: (era: Difficulty, level: number) => void;
 }
 
 // ── Era definitions ────────────────────────────────────────────────────────────
@@ -87,17 +88,17 @@ interface LevelButtonProps {
   locked: boolean;
   themeAccent: { selected: string; border: string; ring: string; text: string };
   onSelect: () => void;
+  onChallenge: () => void;
 }
 
-function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAccent, onSelect }: LevelButtonProps) {
+function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAccent, onSelect, onChallenge }: LevelButtonProps) {
   const isComplete = progress?.completed ?? false;
   const medal      = progress?.bestMedal ?? 'none';
   const stars      = progress?.stars ?? 0;
   const previewSec = levelConfig.previewDuration > 0 ? `${levelConfig.previewDuration / 1000}s preview` : 'No preview';
 
   return (
-    <motion.button
-      onClick={locked ? undefined : onSelect}
+    <motion.div
       className={`
         relative p-3 lg:p-4 rounded-xl border-2 text-left transition-all duration-200
         ${locked
@@ -120,48 +121,77 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
         <span className="absolute top-2 right-2 text-green-400 text-xs font-bold">✓</span>
       )}
 
-      {/* Level number + label */}
-      <div className="flex items-center gap-1.5 mb-1.5">
+      <div
+        role="button"
+        tabIndex={locked ? -1 : 0}
+        onClick={locked ? undefined : onSelect}
+        onKeyDown={(event) => {
+          if (!locked && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            onSelect();
+          }
+        }}
+      >
+        {/* Level number + label */}
+        <div className="flex items-center gap-1.5 mb-1.5">
         <span className={`text-xs lg:text-sm font-extrabold ${locked ? 'text-white/30' : themeAccent.text}`}>Lv.{levelConfig.level}</span>
         <span className="text-xs lg:text-sm font-bold text-white truncate">{levelConfig.label}</span>
+        </div>
+
+        {/* Card count */}
+        <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
+
+        {levelConfig.boss && (
+          <p className="text-[9px] lg:text-[10px] text-amber-300 mb-1">Boss Level · {levelConfig.relic} reward</p>
+        )}
+
+        {/* Medal + stars row */}
+        {!locked && (
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-sm lg:text-base leading-none">{medalIcon(medal)}</span>
+            <span className="text-[10px] lg:text-xs text-white/60">{isComplete ? starDisplay(stars) : '☆☆☆'}</span>
+          </div>
+        )}
+
+        {/* Preview + gold time */}
+        {!locked && (
+          <div className="space-y-0.5">
+            <p className="text-[9px] lg:text-[10px] text-white/30">{previewSec}</p>
+            <p className="text-[9px] lg:text-[10px] text-white/30">🥇 &lt; {levelConfig.timeLimitGold}s</p>
+            {levelConfig.mechanics?.[0] && (
+              <p className="text-[9px] lg:text-[10px] text-white/30 truncate">{levelConfig.mechanics[0]}</p>
+            )}
+          </div>
+        )}
+
+        {locked && (
+          <p className="text-[9px] lg:text-[10px] text-white/25">Complete Level {levelConfig.level - 1} first</p>
+        )}
       </div>
 
-      {/* Card count */}
-      <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
-
-      {levelConfig.boss && (
-        <p className="text-[9px] lg:text-[10px] text-amber-300 mb-1">Boss Level · {levelConfig.relic} reward</p>
-      )}
-
-      {/* Medal + stars row */}
       {!locked && (
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-sm lg:text-base leading-none">{medalIcon(medal)}</span>
-          <span className="text-[10px] lg:text-xs text-white/60">{isComplete ? starDisplay(stars) : '☆☆☆'}</span>
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={onSelect}
+            className="flex-1 rounded-lg bg-white/10 px-2 py-2 text-[11px] font-bold text-white/80 hover:bg-white/15"
+          >
+            Play
+          </button>
+          <button
+            onClick={onChallenge}
+            className="flex-1 rounded-lg bg-sky-500/15 px-2 py-2 text-[11px] font-bold text-sky-200 hover:bg-sky-500/25"
+          >
+            Duel
+          </button>
         </div>
       )}
-
-      {/* Preview + gold time */}
-      {!locked && (
-        <div className="space-y-0.5">
-          <p className="text-[9px] lg:text-[10px] text-white/30">{previewSec}</p>
-          <p className="text-[9px] lg:text-[10px] text-white/30">🥇 &lt; {levelConfig.timeLimitGold}s</p>
-          {levelConfig.mechanics?.[0] && (
-            <p className="text-[9px] lg:text-[10px] text-white/30 truncate">{levelConfig.mechanics[0]}</p>
-          )}
-        </div>
-      )}
-
-      {locked && (
-        <p className="text-[9px] lg:text-[10px] text-white/25">Complete Level {levelConfig.level - 1} first</p>
-      )}
-    </motion.button>
+    </motion.div>
   );
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export default function LevelSelector({ onStart, onStartWeekly }: LevelSelectorProps) {
+export default function LevelSelector({ onStart, onStartWeekly, onCreateChallenge }: LevelSelectorProps) {
   const { theme, levelProgress, relicRewards } = useGameStore();
   const [expandedEra, setExpandedEra] = useState<Difficulty | null>(null);
 
@@ -339,6 +369,7 @@ export default function LevelSelector({ onStart, onStartWeekly }: LevelSelectorP
                                   locked={lvlLocked}
                                   themeAccent={themeAccent}
                                   onSelect={() => handleLevelSelect(era.id, levelConfig.level)}
+                                  onChallenge={() => onCreateChallenge(era.id, levelConfig.level)}
                                 />
                               );
                             })}

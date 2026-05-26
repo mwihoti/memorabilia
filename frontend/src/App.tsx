@@ -23,8 +23,10 @@ import LevelSelector from './components/LevelSelector';
 import AchievementToast from './components/AchievementToast';
 import GhostReplayModal from './components/GhostReplayModal';
 import IntroCinematic from './components/IntroCinematic';
+import ChallengeRoom from './components/ChallengeRoom';
+import { ChallengeRoom as ChallengeRoomData, createChallengeRoom } from './lib/api';
 
-type Screen = 'loading' | 'name-entry' | 'difficulty' | 'level-select' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
+type Screen = 'loading' | 'name-entry' | 'difficulty' | 'level-select' | 'challenge-room' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('loading');
@@ -35,6 +37,8 @@ function App() {
   const [showSplashIntro, setShowSplashIntro] = useState(false);
   const [showLevelIntro, setShowLevelIntro] = useState(false);
   const [startupIntroResolved, setStartupIntroResolved] = useState(false);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
 
   const {
     telegramUser,
@@ -50,9 +54,12 @@ function App() {
     startWeeklyChallenge,
     currentEra,
     currentLevel,
+    challengeMode,
+    activeChallengeRoomId,
     newlyUnlockedAchievements,
     clearNewAchievements,
     hydratePlayerProgress,
+    startChallengeRoomGame,
   } = useGameStore();
 
   useEffect(() => {
@@ -92,8 +99,7 @@ function App() {
           console.log('🎮 Running in DEMO MODE (no blockchain required)');
           setIsInitializing(false);
           const savedName = localStorage.getItem('memorabilia_player_name');
-          // Go to level-select (new main menu) if name is saved, else name-entry
-          setScreen(savedName ? 'level-select' : 'name-entry');
+          setScreen(savedName ? (pendingRoomId ? 'challenge-room' : 'level-select') : 'name-entry');
         } else {
           console.log('⛓️ Running in BLOCKCHAIN MODE');
 
@@ -111,25 +117,33 @@ function App() {
           console.log('✅ Blockchain initialization complete!');
           setIsInitializing(false);
           const savedName = localStorage.getItem('memorabilia_player_name');
-          // Go to level-select if name saved, else name-entry
-          setScreen(savedName ? 'level-select' : 'name-entry');
+          setScreen(savedName ? (pendingRoomId ? 'challenge-room' : 'level-select') : 'name-entry');
         }
       } catch (error) {
         console.error('❌ Initialization failed:', error);
         setIsInitializing(false);
         const savedName = localStorage.getItem('memorabilia_player_name');
-        setScreen(savedName ? 'level-select' : 'name-entry');
+        setScreen(savedName ? (pendingRoomId ? 'challenge-room' : 'level-select') : 'name-entry');
       }
     }
 
     initialize();
-  }, [setTelegramUser, setAccount, setGameController]);
+  }, [pendingRoomId, setTelegramUser, setAccount, setGameController]);
 
   useEffect(() => {
     if (telegramUser?.id) {
       hydratePlayerProgress();
     }
   }, [telegramUser?.id, hydratePlayerProgress]);
+
+  useEffect(() => {
+    const roomId = new URLSearchParams(window.location.search).get('room');
+    if (roomId) {
+      const normalized = roomId.toUpperCase();
+      setActiveRoomId(normalized);
+      setPendingRoomId(normalized);
+    }
+  }, []);
 
   // Handle game state changes
   useEffect(() => {
@@ -147,7 +161,7 @@ function App() {
       }
     }
     resetGame();
-    setScreen('level-select');
+    setScreen(activeChallengeRoomId ? 'challenge-room' : 'level-select');
   };
 
   const handleNextLevel = async () => {
@@ -209,6 +223,49 @@ function App() {
     setScreen('level-select');
   };
 
+  const handleCreateChallenge = async (era: Difficulty, level: number) => {
+    if (!telegramUser) return;
+    const room = await createChallengeRoom({
+      telegramUser: {
+        id: telegramUser.id,
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+      },
+      displayName: playerName || telegramUser.first_name || 'Curator',
+      difficulty: era,
+      level,
+      seed: Math.floor(Math.random() * 2_000_000_000),
+    });
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('room', room.id);
+    window.history.replaceState({}, '', nextUrl.toString());
+    setActiveRoomId(room.id);
+    setPendingRoomId(room.id);
+    setScreen('challenge-room');
+  };
+
+  const handleOpenRoom = (room: ChallengeRoomData) => {
+    setActiveRoomId(room.id);
+    startChallengeRoomGame({
+      id: room.id,
+      difficulty: room.difficulty as Difficulty,
+      level: room.level,
+      seed: room.seed,
+    });
+    setScreen('game');
+  };
+
+  const handleLeaveRoom = () => {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('room');
+    window.history.replaceState({}, '', nextUrl.toString());
+    setActiveRoomId(null);
+    setPendingRoomId(null);
+    setScreen('level-select');
+  };
+
   const isStartupIntroVisible = showOpeningIntro || showSplashIntro;
 
   if ((isInitializing || !startupIntroResolved) && !isStartupIntroVisible) {
@@ -260,7 +317,7 @@ function App() {
 
         <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
           {screen === 'name-entry' && (
-            <NameEntry onContinue={() => setScreen('level-select')} />
+            <NameEntry onContinue={() => setScreen(pendingRoomId ? 'challenge-room' : 'level-select')} />
           )}
 
           {/* New level-select screen — primary entry point */}
@@ -268,7 +325,11 @@ function App() {
             <LevelSelector onStart={handleLevelStart} onStartWeekly={async () => {
               await startWeeklyChallenge();
               setScreen('game');
-            }} />
+            }} onCreateChallenge={handleCreateChallenge} />
+          )}
+
+          {screen === 'challenge-room' && activeRoomId && (
+            <ChallengeRoom roomId={activeRoomId} onBack={handleLeaveRoom} onPlay={handleOpenRoom} />
           )}
 
           {/* Legacy difficulty screen — kept for blockchain mode backward compat */}
@@ -295,7 +356,7 @@ function App() {
         {showWinModal && (
           <WinModal
             onClose={handleWinModalClose}
-            onNextLevel={currentEra !== null ? handleNextLevel : undefined}
+            onNextLevel={currentEra !== null && challengeMode !== 'room' ? handleNextLevel : undefined}
             onShowGhostReplay={handleShowGhostReplay}
           />
         )}

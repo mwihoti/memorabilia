@@ -156,7 +156,7 @@ export interface StartRunParams {
   telegramUser: SubmitScoreParams['telegramUser'];
   difficulty: number;
   level: number;
-  challengeMode: 'standard' | 'daily' | 'weekly';
+  challengeMode: 'standard' | 'daily' | 'weekly' | 'room';
   requestedSeed?: number;
 }
 
@@ -197,4 +197,99 @@ export async function sendTelemetry(payload: {
   } catch {
     // Best-effort only
   }
+}
+
+export interface ChallengeRoomParticipant {
+  rank: number | null;
+  telegramId: number;
+  displayName: string;
+  status: 'joined' | 'playing' | 'finished';
+  joinedAt: string;
+  finishedAt?: string | null;
+  bestTimeSeconds?: number | null;
+  bestMoves?: number | null;
+  bestScore?: number | null;
+  verified: boolean;
+}
+
+export interface ChallengeRoom {
+  id: string;
+  hostTelegramId: number;
+  difficulty: number;
+  level: number;
+  seed: number;
+  status: 'lobby' | 'countdown' | 'live' | 'completed';
+  createdAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  countdownEndsAt?: string | null;
+  isHost?: boolean;
+  participants: ChallengeRoomParticipant[];
+}
+
+async function postChallengeRoom(body: Record<string, unknown>): Promise<ChallengeRoom> {
+  const res = await fetch(`${BASE}/api/challenge-room`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, initData: getInitData() }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || 'Challenge room request failed');
+  }
+
+  return res.json();
+}
+
+export async function createChallengeRoom(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  displayName: string;
+  difficulty: number;
+  level: number;
+  seed: number;
+}): Promise<ChallengeRoom> {
+  return postChallengeRoom({ action: 'create', ...params });
+}
+
+export async function joinChallengeRoom(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  displayName: string;
+  roomId: string;
+}): Promise<ChallengeRoom> {
+  return postChallengeRoom({ action: 'join', ...params });
+}
+
+export async function startChallengeRoom(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  roomId: string;
+}): Promise<ChallengeRoom> {
+  return postChallengeRoom({ action: 'start', ...params });
+}
+
+export async function rematchChallengeRoom(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  roomId: string;
+}): Promise<ChallengeRoom> {
+  return postChallengeRoom({ action: 'rematch', ...params });
+}
+
+export async function submitChallengeRoomResult(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  roomId: string;
+  timeSeconds: number;
+  moves: number;
+  score: number;
+  verified: boolean;
+}): Promise<ChallengeRoom> {
+  return postChallengeRoom({ action: 'submit', ...params });
+}
+
+export async function fetchChallengeRoom(roomId: string): Promise<ChallengeRoom> {
+  const res = await fetch(`${BASE}/api/challenge-room?roomId=${encodeURIComponent(roomId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || 'Failed to fetch challenge room');
+  }
+  return res.json();
 }

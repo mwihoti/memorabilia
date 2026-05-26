@@ -16,7 +16,7 @@ import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } fr
 import { cartridgeController } from '../cartridge/CartridgeController';
 import { mintScoreNFT } from '../cartridge/nftMinter';
 import { addGameScore, saveLevelProgress, getAllLevelProgress, getRelicRewards, saveRelicReward } from './playerStorage';
-import { fetchPlayerProgress, savePlayerProgress, sendTelemetry, startVerifiedRun, submitScore } from '../lib/api';
+import { fetchPlayerProgress, savePlayerProgress, sendTelemetry, startVerifiedRun, submitChallengeRoomResult, submitScore } from '../lib/api';
 import { checkAndUnlockAchievements } from './achievementStore';
 import { loadStreak, recordGamePlayed } from './streakStore';
 import { getDailyChallengeConfig, getWeeklyChallengeConfig, saveDailyChallenge, saveWeeklyChallenge } from './dailyChallenge';
@@ -24,7 +24,7 @@ import { buildReplay, saveGhostReplayIfBest } from './ghostReplay';
 
 export type Theme = 'museum' | 'nature' | 'urban';
 
-type ChallengeMode = 'standard' | 'daily' | 'weekly';
+type ChallengeMode = 'standard' | 'daily' | 'weekly' | 'room';
 
 function buildLevelActions(era: Difficulty, level: number) {
   return {
@@ -168,6 +168,7 @@ interface GameStore {
   pulseScanRow: number | null;
   boardRotationDeg: number;
   verifiedRunId: number | null;
+  activeChallengeRoomId: string | null;
 
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
@@ -195,6 +196,7 @@ interface GameStore {
   setCurrentLevel: (era: Difficulty, level: number) => void;
   startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean) => Promise<void>;
   startWeeklyChallenge: () => Promise<void>;
+  startChallengeRoomGame: (room: { id: string; difficulty: Difficulty; level: number; seed: number }) => Promise<void>;
   clearNewAchievements: () => void;
   loadLevelProgress: () => void;
   hydratePlayerProgress: () => Promise<void>;
@@ -278,6 +280,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   pulseScanRow: null,
   boardRotationDeg: 0,
   verifiedRunId: null,
+  activeChallengeRoomId: null,
 
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
@@ -755,6 +758,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
             })
               .then((result) => {
                 console.log(`✅ Score saved to Neon — Rank #${result.rank} of ${result.totalPlayers}${result.isNewBest ? ' (new personal best!)' : ''}`);
+                const roomId = get().activeChallengeRoomId;
+                if (roomId) {
+                  submitChallengeRoomResult({
+                    telegramUser: {
+                      id: telegramUser.id,
+                      username: telegramUser.username,
+                      first_name: telegramUser.first_name,
+                      last_name: telegramUser.last_name,
+                    },
+                    roomId,
+                    timeSeconds: result.verifiedTimeSeconds ?? elapsedTime,
+                    moves: result.verifiedMoves ?? finalGame.moves,
+                    score: result.verifiedScore ?? get().currentGame?.score ?? finalGame.score,
+                    verified: true,
+                  }).catch((roomError) => {
+                    sendTelemetry({
+                      type: 'error',
+                      source: 'challenge-room-submit',
+                      message: roomError.message || 'Failed to submit room result',
+                      metadata: { roomId, era: currentEra, level: currentLevel },
+                    });
+                  });
+                }
                 if (result.adjusted) {
                   sendTelemetry({
                     type: 'event',
@@ -864,6 +890,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       boardRotationDeg: 0,
       pendingMultiplier: 1,
       verifiedRunId: null,
+      activeChallengeRoomId: null,
     });
   },
   
@@ -943,6 +970,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         pulseScanRow:              null,
         boardRotationDeg:          0,
         verifiedRunId,
+        activeChallengeRoomId:     null,
       });
     } catch (error) {
       console.error('Failed to start level game:', error);
@@ -1016,9 +1044,85 @@ export const useGameStore = create<GameStore>((set, get) => ({
         pulseScanRow:              null,
         boardRotationDeg:          0,
         verifiedRunId,
+        activeChallengeRoomId:     null,
       });
     } catch (error) {
       console.error('Failed to start weekly challenge:', error);
+      set({ isGameLoading: false });
+    }
+  },
+
+  startChallengeRoomGame: async (room) => {
+    set({ isGameLoading: true });
+    try {
+      const actions = buildLevelActions(room.difficulty, room.level);
+      let verifiedRunId: number | null = null;
+      const telegramUser = get().telegramUser;
+
+      if (telegramUser) {
+        try {
+          const verifiedRun = await startVerifiedRun({
+            telegramUser: {
+              id: telegramUser.id,
+              username: telegramUser.username,
+              first_name: telegramUser.first_name,
+              last_name: telegramUser.last_name,
+            },
+            difficulty: room.difficulty,
+            level: room.level,
+            challengeMode: 'room',
+            requestedSeed: room.seed,
+          });
+          verifiedRunId = verifiedRun.runId;
+        } catch (error: any) {
+          sendTelemetry({
+            type: 'error',
+            source: 'room-run-session',
+            message: error.message || 'Failed to create verified room run',
+            metadata: { roomId: room.id, difficulty: room.difficulty, level: room.level },
+          });
+        }
+      }
+
+      const newGame = createLevelGame(room.difficulty, room.level, room.seed);
+      set({
+        currentGame:               newGame,
+        selectedDifficulty:        room.difficulty,
+        flippedCards:              [],
+        isGameLoading:             false,
+        showWinModal:              false,
+        currentEra:                room.difficulty,
+        currentLevel:              room.level,
+        combo:                     { count: 0, multiplier: 1 },
+        mismatches:                0,
+        maxCombo:                  0,
+        replayMoves:               [],
+        gameStartMs:               Date.now(),
+        isDailyChallenge:          false,
+        challengeMode:             'room',
+        challengeSeed:             room.seed,
+        newlyUnlockedAchievements: [],
+        lastRunAnalytics:          null,
+        shieldCharges:             actions.shields,
+        shieldBlocksUsed:          0,
+        hintCharges:               actions.hints,
+        hintUses:                  0,
+        hintPairIndices:           [],
+        freezeCharges:             actions.freezes,
+        freezeBurstsUsed:          0,
+        trapCharges:               actions.traps,
+        trapReshufflesUsed:        0,
+        multiplierCharges:         actions.multipliers,
+        pendingMultiplier:         1,
+        multiplierMatches:         0,
+        hiddenCardIndices:         [],
+        pulseScanRow:              null,
+        boardRotationDeg:          0,
+        verifiedRunId,
+        activeChallengeRoomId:     room.id,
+      });
+    } catch (error) {
+      console.error('Failed to start challenge room game:', error);
       set({ isGameLoading: false });
     }
   },

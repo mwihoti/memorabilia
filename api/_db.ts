@@ -80,11 +80,42 @@ export async function ensureDb() {
     )
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS challenge_rooms (
+      id              VARCHAR(24) PRIMARY KEY,
+      host_telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+      difficulty      SMALLINT NOT NULL,
+      level           INT NOT NULL,
+      seed            INT NOT NULL,
+      status          VARCHAR(16) NOT NULL DEFAULT 'lobby',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      started_at      TIMESTAMPTZ,
+      completed_at    TIMESTAMPTZ
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS challenge_room_participants (
+      room_id            VARCHAR(24) NOT NULL REFERENCES challenge_rooms(id) ON DELETE CASCADE,
+      telegram_id        BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+      display_name       VARCHAR(255) NOT NULL,
+      status             VARCHAR(16) NOT NULL DEFAULT 'joined',
+      joined_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at        TIMESTAMPTZ,
+      best_time_seconds  INT,
+      best_moves         INT,
+      best_score         INT,
+      verified           BOOLEAN NOT NULL DEFAULT FALSE,
+      PRIMARY KEY (room_id, telegram_id)
+    )
+  `;
+
   await sql`CREATE INDEX IF NOT EXISTS idx_sessions_telegram ON game_sessions(telegram_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sessions_played_at ON game_sessions(played_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_users_best_score ON users(best_score DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_progress_telegram ON player_progress(telegram_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_run_sessions_telegram ON run_sessions(telegram_id, started_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_challenge_room_participants_room ON challenge_room_participants(room_id)`;
 
   initialized = true;
 }
