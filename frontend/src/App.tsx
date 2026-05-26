@@ -33,7 +33,7 @@ function App() {
   const [showOpeningIntro, setShowOpeningIntro] = useState(false);
   const [showSplashIntro, setShowSplashIntro] = useState(false);
   const [showLevelIntro, setShowLevelIntro] = useState(false);
-  const [introDecisionMade, setIntroDecisionMade] = useState(false);
+  const [startupIntroResolved, setStartupIntroResolved] = useState(false);
 
   const {
     telegramUser,
@@ -61,20 +61,8 @@ function App() {
     } else {
       setShowSplashIntro(true);
     }
-    setIntroDecisionMade(true);
+    setStartupIntroResolved(true);
   }, []);
-
-  useEffect(() => {
-    if (isInitializing || !introDecisionMade) return;
-    const hasSeenOpening = localStorage.getItem('memorabilia_seen_opening_intro') === '1';
-    if (!hasSeenOpening && !showOpeningIntro) {
-      setShowOpeningIntro(true);
-      return;
-    }
-    if (hasSeenOpening && !showSplashIntro && !showOpeningIntro) {
-      setShowSplashIntro(true);
-    }
-  }, [isInitializing, introDecisionMade, showOpeningIntro, showSplashIntro]);
 
   useEffect(() => {
     if (!currentGame || screen !== 'game') return;
@@ -217,7 +205,7 @@ function App() {
 
   const isStartupIntroVisible = showOpeningIntro || showSplashIntro;
 
-  if ((isInitializing || !introDecisionMade) && !isStartupIntroVisible) {
+  if ((isInitializing || !startupIntroResolved) && !isStartupIntroVisible) {
     return <LoadingScreen />;
   }
 
@@ -326,16 +314,17 @@ function App() {
         open={showOpeningIntro}
         onComplete={() => {
           setShowOpeningIntro(false);
-          if (!isInitializing) {
-            setShowSplashIntro(true);
-          }
+          setShowSplashIntro(true);
         }}
       />
 
       <IntroCinematic
         mode="splash"
         open={showSplashIntro}
-        onComplete={() => setShowSplashIntro(false)}
+        onComplete={() => {
+          setShowSplashIntro(false);
+          setStartupIntroResolved(true);
+        }}
       />
 
       <IntroCinematic

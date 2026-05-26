@@ -24,6 +24,10 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.sepolia
+.env.production
+frontend/.env.sepolia
+frontend/.env.production
 
 # Node (if using frontend)
 node_modules/

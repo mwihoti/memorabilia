@@ -3,8 +3,16 @@
 class SoundManager {
   private audioContext: AudioContext | null = null;
   private enabled: boolean = true;
+  private storageKey = 'memorabilia_sound_enabled';
 
   constructor() {
+    if (typeof window !== 'undefined') {
+      const stored = window.localStorage.getItem(this.storageKey);
+      if (stored !== null) {
+        this.enabled = stored === '1';
+      }
+    }
+
     // Initialize on first user interaction
     if (typeof window !== 'undefined') {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -122,10 +130,16 @@ class SoundManager {
 
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(this.storageKey, enabled ? '1' : '0');
+    }
   }
 
   toggle() {
     this.enabled = !this.enabled;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(this.storageKey, this.enabled ? '1' : '0');
+    }
     return this.enabled;
   }
 
@@ -144,4 +158,3 @@ export const playMismatchSound = () => soundManager.playMismatch();
 export const playVictorySound = () => soundManager.playVictory();
 export const toggleSound = () => soundManager.toggle();
 export const isSoundEnabled = () => soundManager.isEnabled();
-

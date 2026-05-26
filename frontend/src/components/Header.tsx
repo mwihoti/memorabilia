@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import WalletButton from './WalletButton';
+import { isSoundEnabled, toggleSound } from '../utils/sounds';
 
 interface HeaderProps {
   onShowLeaderboard: () => void;
@@ -13,6 +15,11 @@ export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDa
   const { telegramUser, playerName, theme, streak } = useGameStore();
   const displayName = playerName || telegramUser?.first_name || null;
   const avatarLetter = displayName?.[0]?.toUpperCase() ?? '?';
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    setSoundEnabled(isSoundEnabled());
+  }, []);
 
   const themeStyles = {
     museum: {
@@ -81,6 +88,17 @@ export default function Header({ onShowLeaderboard, onBackToDifficulty, onShowDa
                 <span>🔥</span>
                 <span>{streak.currentStreak}</span>
               </div>
+            )}
+
+            {currentScreen === 'game' && (
+              <button
+                onClick={() => setSoundEnabled(toggleSound())}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${themeStyles.btnSecondary}`}
+                title={soundEnabled ? 'Mute game sounds' : 'Enable game sounds'}
+              >
+                <span className="sm:hidden">{soundEnabled ? '🔊' : '🔇'}</span>
+                <span className="hidden sm:inline">{soundEnabled ? '🔊 Sound' : '🔇 Muted'}</span>
+              </button>
             )}
 
             {currentScreen === 'game' && (
