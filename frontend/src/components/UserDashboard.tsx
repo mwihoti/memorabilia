@@ -1,461 +1,281 @@
-import { useState, useEffect } from 'react';
-import { getAllPlayers, getLeaderboard, getLeaderboardStats, LocalPlayerData, LocalLeaderboardEntry, clearAllData, createTestPlayer } from '../store/playerStorage';
-import { fetchLeaderboard, LeaderboardRow } from '../lib/api';
-import './UserDashboard.css';
+import { useEffect, useMemo, useState } from 'react';
+import { useGameStore } from '../store/gameStore';
+import { fetchLeaderboard, fetchPlayerStats, LeaderboardRow, PlayerStatsResponse } from '../lib/api';
+import { DIFFICULTY_ORDER, ERA_LEVEL_CONFIGS, getDifficultyMeta } from '../types';
 
-type DashboardTab = 'users' | 'leaderboard' | 'stats' | 'advanced';
+function formatCompactTime(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
 
 export default function UserDashboard() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('users');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'games' | 'active' | 'joined'>('games');
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  
-  const [advancedTaps, setAdvancedTaps] = useState(0);
-  const [advancedUnlocked, setAdvancedUnlocked] = useState(false);
-  const [allPlayers, setAllPlayers] = useState<LocalPlayerData[]>([]);
-  const [leaderboardData, setLeaderboardData] = useState<LocalLeaderboardEntry[]>([]);
-  const [statsData, setStatsData] = useState<any>(null);
-  const [neonLeaderboard, setNeonLeaderboard] = useState<LeaderboardRow[]>([]);
-  const [neonTotal, setNeonTotal] = useState(0);
-  const [neonLoading, setNeonLoading] = useState(false);
-
-  const loadData = () => {
-    const players = getAllPlayers();
-    const leaderboard = getLeaderboard();
-    const stats = getLeaderboardStats();
-    setAllPlayers(players);
-    setLeaderboardData(leaderboard);
-    setStatsData(stats);
-  };
-
-  const loadNeonLeaderboard = async () => {
-    setNeonLoading(true);
-    try {
-      const data = await fetchLeaderboard(100);
-      setNeonLeaderboard(data.entries);
-      setNeonTotal(data.total);
-    } catch {
-      // silently fall back to localStorage leaderboard
-    } finally {
-      setNeonLoading(false);
-    }
-  };
+  const { telegramUser, playerName, theme, levelProgress, streak, relicRewards, newlyUnlockedAchievements } = useGameStore();
+  const [playerStats, setPlayerStats] = useState<PlayerStatsResponse | null>(null);
+  const [topPlayers, setTopPlayers] = useState<LeaderboardRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadData();
-    loadNeonLeaderboard();
-  }, []);
+    let cancelled = false;
 
-  // Auto-refresh setup
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      loadData();
-    }, 5000); // Refresh every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [autoRefresh]);
-
-  // Filter and sort users
-  const filteredUsers = allPlayers
-    .filter((user) =>
-      searchQuery === ''
-        ? true
-        : String(user.telegramId).includes(searchQuery) ||
-          user.playerName.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'games':
-          return b.totalGames - a.totalGames;
-        case 'active':
-          return b.lastPlayed - a.lastPlayed;
-        case 'joined':
-          return b.joinedAt - a.joinedAt;
-        default:
-          return 0;
+    async function load() {
+      if (!telegramUser?.id) {
+        setLoading(false);
+        return;
       }
-    });
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+      setLoading(true);
+      setError(null);
 
-  const formatTime = (timestamp: number) => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
+      try {
+        const [stats, leaderboard] = await Promise.all([
+          fetchPlayerStats(telegramUser.id),
+          fetchLeaderboard(8),
+        ]);
 
-    if (hours < 1) return 'Just now';
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return formatDate(timestamp);
-  };
-
-  const handleHeaderTap = () => {
-    const next = advancedTaps + 1;
-    setAdvancedTaps(next);
-    if (next >= 7 && !advancedUnlocked) {
-      setAdvancedUnlocked(true);
+        if (cancelled) return;
+        setPlayerStats(stats);
+        setTopPlayers(leaderboard.entries);
+      } catch (err: any) {
+        if (cancelled) return;
+        setError(err.message || 'Failed to load dashboard');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  };
+
+    load();
+    return () => { cancelled = true; };
+  }, [telegramUser?.id]);
+
+  const progressSummary = useMemo(() => {
+    return DIFFICULTY_ORDER.map((era) => {
+      const levels = ERA_LEVEL_CONFIGS[era];
+      const completed = levelProgress.filter((entry) => entry.era === era && entry.completed).length;
+      const bestUnlocked = levelProgress
+        .filter((entry) => entry.era === era)
+        .reduce((max, entry) => Math.max(max, entry.level), 0);
+      return {
+        era,
+        meta: getDifficultyMeta(era),
+        completed,
+        total: levels.length,
+        bestUnlocked,
+        percent: Math.round((completed / levels.length) * 100),
+      };
+    });
+  }, [levelProgress]);
+
+  const totalCompletedLevels = levelProgress.filter((entry) => entry.completed).length;
+  const totalLevels = progressSummary.reduce((sum, era) => sum + era.total, 0);
+  const displayName = playerName || telegramUser?.first_name || 'Curator';
+
+  const themeAccent = {
+    museum: {
+      shell: 'from-slate-950 via-slate-900 to-amber-950/60',
+      card: 'bg-white/5 border-white/10',
+      text: 'text-amber-300',
+      soft: 'text-amber-100/65',
+      badge: 'bg-amber-500/10 border-amber-400/20 text-amber-200',
+      line: 'from-amber-400 to-amber-600',
+    },
+    nature: {
+      shell: 'from-slate-950 via-emerald-950/60 to-slate-900',
+      card: 'bg-white/5 border-white/10',
+      text: 'text-green-300',
+      soft: 'text-green-100/65',
+      badge: 'bg-green-500/10 border-green-400/20 text-green-200',
+      line: 'from-green-400 to-emerald-600',
+    },
+    urban: {
+      shell: 'from-zinc-950 via-zinc-900 to-cyan-950/50',
+      card: 'bg-white/5 border-white/10',
+      text: 'text-[#00ff88]',
+      soft: 'text-white/60',
+      badge: 'bg-[#00ff88]/10 border-[#00ff88]/20 text-[#9cffd1]',
+      line: 'from-[#00ff88] to-[#00e5ff]',
+    },
+  }[theme];
+
+  if (loading) {
+    return (
+      <div className={`rounded-3xl border ${themeAccent.card} bg-gradient-to-br ${themeAccent.shell} p-8 text-center`}>
+        <p className={`text-sm font-semibold uppercase tracking-[0.25em] ${themeAccent.text}`}>Player Dashboard</p>
+        <p className="mt-4 text-white/70">Loading your profile…</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="user-dashboard">
-      <div className="dashboard-header" onClick={handleHeaderTap} style={{ cursor: 'default' }}>
-        <h1>🎮 Player Dashboard</h1>
-        <p>Track all players and their scores</p>
-        {advancedTaps > 0 && advancedTaps < 7 && (
-          <p style={{ fontSize: '10px', opacity: 0.4, marginTop: 2 }}>
-            {7 - advancedTaps} more to unlock advanced mode
-          </p>
-        )}
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="dashboard-tabs">
-        <button
-          className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-          onClick={() => setActiveTab('users')}
-        >
-          👥 All Users ({allPlayers.length})
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('leaderboard'); loadNeonLeaderboard(); }}
-        >
-          🏆 Leaderboard ({neonTotal || leaderboardData.length})
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
-          onClick={() => setActiveTab('stats')}
-        >
-          📊 Analytics
-        </button>
-        {advancedUnlocked && (
-          <button
-            className={`tab-btn ${activeTab === 'advanced' ? 'active' : ''}`}
-            onClick={() => setActiveTab('advanced')}
-            style={{ borderColor: '#ef4444' }}
-          >
-            🔐 Advanced
-          </button>
-        )}
-      </div>
-
-      {/* Users Tab */}
-      {activeTab === 'users' && (
-        <div className="tab-content">
-          <div className="content-header">
-            <div className="search-container">
-              <input
-                type="text"
-                placeholder="Search by name or Telegram ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="search-input"
-              />
-            </div>
-
-            <div className="controls">
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="sort-select">
-                <option value="games">Sort by: Most Games</option>
-                <option value="active">Sort by: Most Active</option>
-                <option value="joined">Sort by: Newest</option>
-              </select>
-              <button onClick={loadData} className="refresh-btn">
-                🔄 Refresh
-              </button>
-              <label className="auto-refresh">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                />
-                Auto-refresh
-              </label>
-            </div>
+    <div className={`rounded-3xl border ${themeAccent.card} bg-gradient-to-br ${themeAccent.shell} p-4 sm:p-6 space-y-6`}>
+      <section className="rounded-3xl border border-white/10 bg-black/20 p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className={`text-[11px] font-semibold uppercase tracking-[0.3em] ${themeAccent.text}`}>Player Dashboard</p>
+            <h2 className="mt-2 text-3xl sm:text-4xl font-black text-white">{displayName}</h2>
+            <p className={`mt-2 text-sm ${themeAccent.soft}`}>
+              {playerStats?.display_name ?? telegramUser?.username ? `Signed in as ${playerStats?.display_name ?? `@${telegramUser?.username}`}` : 'Your live progression, streak, relics, and recent runs.'}
+            </p>
           </div>
 
-          <div className="table-container">
-            {filteredUsers.length === 0 ? (
-              <div className="empty-state">
-                <p>📭 No players yet. Start playing to appear here!</p>
+          <div className="flex flex-wrap gap-2">
+            <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${themeAccent.badge}`}>
+              🔥 {streak.currentStreak}-day streak
+            </span>
+            <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${themeAccent.badge}`}>
+              🏛️ {relicRewards.length} relics
+            </span>
+            <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${themeAccent.badge}`}>
+              ✅ {totalCompletedLevels}/{totalLevels} levels cleared
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {error && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Global Rank', value: playerStats?.rank ? `#${playerStats.rank}` : '—', note: 'Best score standing' },
+          { label: 'Best Score', value: playerStats?.best_score?.toLocaleString() ?? '0', note: 'Highest verified score' },
+          { label: 'Average Score', value: playerStats?.average_score?.toLocaleString() ?? '0', note: 'Across recorded runs' },
+          { label: 'Total Runs', value: playerStats?.total_games?.toLocaleString() ?? '0', note: 'Completed games' },
+        ].map((card) => (
+          <div key={card.label} className={`rounded-2xl border ${themeAccent.card} p-4`}>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-white/45">{card.label}</p>
+            <p className={`mt-3 text-2xl font-black ${themeAccent.text}`}>{card.value}</p>
+            <p className="mt-2 text-xs text-white/50">{card.note}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className={`rounded-3xl border ${themeAccent.card} p-5`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-[11px] font-semibold uppercase tracking-[0.25em] ${themeAccent.text}`}>Progress Map</p>
+              <h3 className="mt-1 text-xl font-bold text-white">Era Completion</h3>
+            </div>
+            <p className="text-sm text-white/50">{totalCompletedLevels}/{totalLevels} levels mastered</p>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            {progressSummary.map((era) => (
+              <div key={era.era} className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-white">{era.meta.icon} {era.meta.label}</p>
+                    <p className="text-xs text-white/45">
+                      {era.completed}/{era.total} levels complete
+                      {era.bestUnlocked > 0 ? ` · highest unlocked ${era.bestUnlocked}` : ' · not started'}
+                    </p>
+                  </div>
+                  <div className={`text-sm font-bold ${themeAccent.text}`}>{era.percent}%</div>
+                </div>
+                <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full bg-gradient-to-r ${themeAccent.line}`}
+                    style={{ width: `${era.percent}%` }}
+                  />
+                </div>
               </div>
-            ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Player</th>
-                    <th>Telegram ID</th>
-                    <th>Total Games</th>
-                    <th>Wins</th>
-                    <th>Best Score</th>
-                    <th>Average</th>
-                    <th>Last Played</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.map((user) => (
-                    <tr key={user.telegramId}>
-                      <td className="player-name">{user.playerName}</td>
-                      <td>{user.telegramId}</td>
-                      <td>
-                        <span className="badge">{user.totalGames}</span>
-                      </td>
-                      <td>
-                        <span className="badge success">{user.totalWins}</span>
-                      </td>
-                      <td>
-                        <span className="score">{user.bestScore.toLocaleString()}</span>
-                      </td>
-                      <td>
-                        <span className="score">{user.averageScore.toLocaleString()}</span>
-                      </td>
-                      <td className="time">{formatTime(user.lastPlayed)}</td>
-                    </tr>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className={`rounded-3xl border ${themeAccent.card} p-5`}>
+            <p className={`text-[11px] font-semibold uppercase tracking-[0.25em] ${themeAccent.text}`}>Relics & Achievements</p>
+            <h3 className="mt-1 text-xl font-bold text-white">Collection</h3>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {relicRewards.length > 0 ? relicRewards.map((relic) => (
+                <div key={relic.id} className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs text-white/75">
+                  <span className="mr-1.5">{relic.icon}</span>
+                  <span className="font-semibold text-white">{relic.name}</span>
+                </div>
+              )) : (
+                <p className="text-sm text-white/45">No relics unlocked yet. Boss clears with strong scores will add them here.</p>
+              )}
+            </div>
+            {newlyUnlockedAchievements.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">Latest Achievements</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {newlyUnlockedAchievements.map((achievement) => (
+                    <span key={achievement.id} className="rounded-full bg-black/20 px-2.5 py-1 text-xs text-white/80">
+                      {achievement.icon} {achievement.name}
+                    </span>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Leaderboard Tab — pulls from Neon DB */}
-      {activeTab === 'leaderboard' && (
-        <div className="tab-content">
-          <div className="content-header">
-            <h2>🏆 Hall of Fame {neonTotal > 0 && <span style={{ fontSize: '0.7em', color: '#999' }}>({neonTotal} players)</span>}</h2>
-            <button onClick={loadNeonLeaderboard} disabled={neonLoading} className="refresh-btn">
-              {neonLoading ? '⏳' : '🔄'} Refresh
-            </button>
-          </div>
-
-          <div className="leaderboard-container">
-            {neonLoading && neonLeaderboard.length === 0 ? (
-              <div className="empty-state"><p>⏳ Loading live leaderboard...</p></div>
-            ) : neonLeaderboard.length > 0 ? (
-              <div className="leaderboard-list">
-                {neonLeaderboard.map((entry) => {
-                  const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
-                  return (
-                    <div key={entry.telegram_id} className="leaderboard-entry">
-                      <div className="rank-medal">{medal}</div>
-                      <div className="entry-info">
-                        <div className="player-info">
-                          <h3>{entry.display_name}</h3>
-                          {entry.first_name && entry.username && (
-                            <p className="difficulty-badge">{entry.first_name}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="entry-stats">
-                        <div className="stat">
-                          <span className="label">Best Score</span>
-                          <span className="value">{entry.best_score.toLocaleString()}</span>
-                        </div>
-                        <div className="stat">
-                          <span className="label">Games</span>
-                          <span className="value">{entry.total_games}</span>
-                        </div>
-                        <div className="stat">
-                          <span className="label">Wins</span>
-                          <span className="value">{entry.total_wins}</span>
-                        </div>
-                        <div className="stat">
-                          <span className="label">Last Active</span>
-                          <span className="value">{formatTime(new Date(entry.last_active).getTime())}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <p>🏅 No scores yet. Complete a game to join the leaderboard!</p>
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
 
-      {/* Analytics Tab */}
-      {activeTab === 'stats' && (
-        <div className="tab-content">
-          <div className="content-header">
-            <h2>📊 Analytics</h2>
-            <button onClick={loadData} className="refresh-btn">
-              🔄 Refresh
-            </button>
-          </div>
-
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-icon">👥</div>
-              <div className="stat-content">
-                <p className="stat-label">Total Players</p>
-                <p className="stat-value">{statsData?.totalPlayers || 0}</p>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon">🎮</div>
-              <div className="stat-content">
-                <p className="stat-label">Games Played</p>
-                <p className="stat-value">{statsData?.totalGames || 0}</p>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon">📈</div>
-              <div className="stat-content">
-                <p className="stat-label">Average Score</p>
-                <p className="stat-value">{statsData?.averageScore?.toLocaleString() || '0'}</p>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon">🏆</div>
-              <div className="stat-content">
-                <p className="stat-label">Highest Score</p>
-                <p className="stat-value">{statsData?.highestScore?.toLocaleString() || '0'}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="info-section">
-            <h3>ℹ️ About This Dashboard</h3>
-            <p>
-              This dashboard displays all player scores and statistics stored locally. Scores are automatically recorded when you complete a game and appear in the Hall of Fame instantly!
-            </p>
-            <p>
-              <strong>Data stored locally:</strong> No blockchain required for basic tracking. When you deploy contracts and enable Torii indexing, this data will sync to the blockchain.
-            </p>
-          </div>
-
-          {/* Debug Section */}
-          <div className="info-section">
-            <h3>🔍 Debug Info</h3>
-            <button 
-              onClick={() => {
-                const playerData = localStorage.getItem('memorabilia_player_data');
-                const leaderboardData = localStorage.getItem('memorabilia_leaderboard');
-                console.log('📦 Player Data in LocalStorage:', playerData ? JSON.parse(playerData) : 'EMPTY');
-                console.log('📦 Leaderboard Data in LocalStorage:', leaderboardData ? JSON.parse(leaderboardData) : 'EMPTY');
-                alert('Check browser console (F12) for raw localStorage data');
-              }}
-              className="debug-btn"
-            >
-              📦 Check LocalStorage (see console)
-            </button>
-            <button 
-              onClick={() => {
-                createTestPlayer();
-                loadData();
-                alert('✅ Test player "Dan🐾" created! Dashboard should now show the player.');
-              }}
-              className="debug-btn"
-              style={{ background: 'linear-gradient(135deg, #00c853, #64dd17)' }}
-            >
-              ✅ Create Test Player
-            </button>
-            <button 
-              onClick={() => {
-                if (window.confirm('Are you sure? This will delete all player data.')) {
-                  clearAllData();
-                  loadData();
-                  alert('✅ All data cleared');
-                }
-              }}
-              className="debug-btn"
-              style={{ background: 'linear-gradient(135deg, #d32f2f, #ff1744)' }}
-            >
-              🗑️ Clear All Data
-            </button>
-            <p style={{ fontSize: '0.9em', color: '#999' }}>
-              Use these buttons to test or reset player data. Results will appear above.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Advanced Tab — hidden from normal users, unlocked by tapping header 7× */}
-      {activeTab === 'advanced' && advancedUnlocked && (
-        <div className="tab-content">
-          <div style={{ padding: '16px', background: '#1e1e2e', borderRadius: '12px', border: '1px solid #ef4444', marginBottom: '16px' }}>
-            <p style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '8px' }}>
-              🔐 ADVANCED · FOR DEVELOPERS ONLY
-            </p>
-            <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 800, marginBottom: '4px' }}>
-              Blockchain Security Reference
-            </h2>
-            <p style={{ color: '#999', fontSize: '12px' }}>
-              Educational content about on-chain game security. Not visible to regular players.
-            </p>
-          </div>
-
-          <div style={{ padding: '20px', background: '#0f172a', borderRadius: '12px', border: '1px solid #334155', lineHeight: 1.7 }}>
-            <h3 style={{ color: '#f87171', fontSize: '16px', fontWeight: 700, marginBottom: '12px' }}>
-              §5 — 51% Attack: What an Attacker Can (and Cannot) Do
-            </h3>
-            <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '12px' }}>
-              A 51% attacker controls the majority of hashpower on a proof-of-work chain.
-            </p>
-
-            <div style={{ marginBottom: '16px' }}>
-              <p style={{ color: '#4ade80', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
-                ✅ Realistic actions:
-              </p>
-              <ul style={{ color: '#cbd5e1', fontSize: '13px', paddingLeft: '16px' }}>
-                <li style={{ marginBottom: '4px' }}>Reorganise (re-mine) recent blocks → double-spend their own transactions.</li>
-                <li style={{ marginBottom: '4px' }}>Censor specific transactions or miners by ignoring their blocks.</li>
-                <li style={{ marginBottom: '4px' }}>Build a longer private chain and broadcast it at the right moment.</li>
-              </ul>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <p style={{ color: '#f87171', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>
-                ❌ What they CANNOT do:
-              </p>
-              <ul style={{ color: '#cbd5e1', fontSize: '13px', paddingLeft: '16px' }}>
-                <li style={{ marginBottom: '4px' }}>Arbitrarily break consensus rules (e.g. print extra tokens, change supply cap).</li>
-                <li style={{ marginBottom: '4px' }}>Steal UTXOs/assets that don't belong to them.</li>
-                <li style={{ marginBottom: '4px' }}>Create invalid signatures or bypass cryptographic proofs.</li>
-              </ul>
-            </div>
-
-            <div style={{ padding: '12px', background: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
-              <p style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
-                <strong style={{ color: '#e2e8f0' }}>Why?</strong> Full nodes (not just miners) enforce consensus rules.
-                An invalid block is rejected by the entire network regardless of hashpower.
-                The attacker can only rewrite history they themselves created or recent blocks.
-                Economic cost is enormous — lost honest revenue plus severe market reaction.
-              </p>
-            </div>
-
-            <div style={{ marginTop: '16px', padding: '12px', background: '#0c1a3a', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
-              <p style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                🔷 Starknet / Layer-2 Note
-              </p>
-              <p style={{ color: '#94a3b8', fontSize: '12px' }}>
-                Starknet uses ZK-STARKs for validity proofs. State transitions are proven correct
-                before being accepted by L1 Ethereum. A 51% attack on Ethereum L1 would not
-                allow fabrication of invalid Starknet state transitions — the proof system prevents it.
-              </p>
+          <div className={`rounded-3xl border ${themeAccent.card} p-5`}>
+            <p className={`text-[11px] font-semibold uppercase tracking-[0.25em] ${themeAccent.text}`}>Top Players</p>
+            <h3 className="mt-1 text-xl font-bold text-white">Live Hall of Fame</h3>
+            <div className="mt-4 space-y-3">
+              {topPlayers.length > 0 ? topPlayers.slice(0, 5).map((entry) => (
+                <div key={entry.telegram_id} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/10 px-3 py-2.5">
+                  <div>
+                    <p className="font-semibold text-white">#{entry.rank} {entry.display_name}</p>
+                    <p className="text-xs text-white/45">{entry.total_games} runs · {entry.total_wins} wins</p>
+                  </div>
+                  <div className={`text-sm font-bold ${themeAccent.text}`}>{entry.best_score.toLocaleString()}</div>
+                </div>
+              )) : (
+                <p className="text-sm text-white/45">Leaderboard data will appear here after scores are submitted.</p>
+              )}
             </div>
           </div>
         </div>
-      )}
+      </section>
+
+      <section className={`rounded-3xl border ${themeAccent.card} p-5`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className={`text-[11px] font-semibold uppercase tracking-[0.25em] ${themeAccent.text}`}>Recent Runs</p>
+            <h3 className="mt-1 text-xl font-bold text-white">Your latest sessions</h3>
+          </div>
+          {playerStats?.last_active && (
+            <p className="text-xs text-white/45">Last active {formatCompactTime(playerStats.last_active)}</p>
+          )}
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {playerStats?.recentGames?.length ? playerStats.recentGames.map((game) => {
+            const difficulty = getDifficultyMeta(game.difficulty);
+            const stars = '⭐'.repeat(game.stars) + '☆'.repeat(Math.max(0, 3 - game.stars));
+            return (
+              <div key={game.id} className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-white">{difficulty.icon} {difficulty.shortLabel}</p>
+                  <span className="text-xs text-white/45">{formatCompactTime(game.played_at)}</span>
+                </div>
+                <p className={`mt-3 text-xl font-black ${themeAccent.text}`}>{game.score.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-white/50">{game.moves} moves · {game.time_seconds}s</p>
+                <p className="mt-2 text-sm text-white/80">{stars}</p>
+              </div>
+            );
+          }) : (
+            <div className="rounded-2xl border border-white/10 bg-black/10 p-4 text-sm text-white/45">
+              Finish a few runs and your recent sessions will appear here.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

@@ -87,6 +87,7 @@ export interface PlayerStatsResponse {
   best_score: number;
   average_score: number;
   rank: number | null;
+  last_active?: string;
   recentGames: Array<{
     id: number;
     score: number;

@@ -95,7 +95,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     : null;
 
   const stageCount = currentEra !== null ? getStageCountForLevel(currentEra, currentLevel) : 1;
-  const hasNextStage = currentStage < stageCount;
+  const hasNextStage = stageCount > 1 && currentStage < stageCount;
   const nextLevelConfig = levelConfig && currentEra !== null && currentLevel < getMaxLevelForEra(currentEra)
     ? ERA_LEVEL_CONFIGS[currentEra!]?.[currentLevel] ?? null
     : null;
@@ -249,7 +249,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                   Exhibition Complete!
                 </h2>
                 <p className="text-white/50 text-xs mt-0.5">{displayName} · {diffLabel}</p>
-                {levelConfig && (
+                {levelConfig && stageCount > 1 && (
                   <p className="text-white/35 text-[11px] mt-1">Stage {currentStage}/{stageCount}</p>
                 )}
               </div>
@@ -437,21 +437,13 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                   transition={{ delay: 0.7 }}
                   className="space-y-1.5"
                 >
-                  {nextLevelConfig && (
+                  {(hasNextStage || nextLevelConfig) && (
                     <div className="flex items-center gap-2 px-4 py-2.5 bg-white/5 rounded-xl text-sm">
                       <span>⬆️</span>
                       <span className="text-white/70">
                         {hasNextStage
                           ? <>Next Stage: <span className="font-bold text-white">{currentStage + 1}/{stageCount}</span></>
                           : <>Next Level: <span className="font-bold text-white">{nextLevelConfig.label}</span></>}
-                      </span>
-                    </div>
-                  )}
-                  {hasNextStage && !nextLevelConfig && (
-                    <div className="flex items-center gap-2 px-4 py-2.5 bg-white/5 rounded-xl text-sm">
-                      <span>⬆️</span>
-                      <span className="text-white/70">
-                        Next Stage: <span className="font-bold text-white">{currentStage + 1}/{stageCount}</span>
                       </span>
                     </div>
                   )}

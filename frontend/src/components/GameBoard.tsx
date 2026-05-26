@@ -183,7 +183,7 @@ export default function GameBoard() {
 
   // Preview banner label
   const previewLabel = levelConfig
-    ? `Level ${currentLevel} · Stage ${currentStage}/${levelConfig.stageCount} · ${levelConfig.label} · ${(levelConfig.previewDuration / 1000).toFixed(1)}s preview`
+    ? `Level ${currentLevel} · ${levelConfig.label} · ${(levelConfig.previewDuration / 1000).toFixed(1)}s preview`
     : null;
   const mechanicLabels = levelConfig?.mechanics ?? [];
 
@@ -205,7 +205,7 @@ export default function GameBoard() {
           style={{ borderColor: 'var(--theme-border)', backgroundColor: 'rgba(255,255,255,0.05)' }}
         >
           {difficultyLabel}
-          {levelLabel && <span className="ml-1.5 opacity-60">· {levelLabel} · Stage {currentStage}/{levelConfig?.stageCount ?? 1}</span>}
+          {levelLabel && <span className="ml-1.5 opacity-60">· {levelLabel}</span>}
         </span>
       </motion.div>
 

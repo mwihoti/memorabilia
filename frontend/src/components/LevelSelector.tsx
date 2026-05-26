@@ -70,6 +70,14 @@ function medalIcon(medal: TimeMedal): string {
   return '—';
 }
 
+function chunkLevels(levels: EraLevel[], size: number): EraLevel[][] {
+  const chunks: EraLevel[][] = [];
+  for (let i = 0; i < levels.length; i += size) {
+    chunks.push(levels.slice(i, i + size));
+  }
+  return chunks;
+}
+
 // ── Sub-component: Level button ────────────────────────────────────────────────
 
 interface LevelButtonProps {
@@ -85,7 +93,6 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
   const isComplete = progress?.completed ?? false;
   const medal      = progress?.bestMedal ?? 'none';
   const stars      = progress?.stars ?? 0;
-  const stageDone  = progress?.highestStageCompleted ?? 0;
   const previewSec = levelConfig.previewDuration > 0 ? `${levelConfig.previewDuration / 1000}s preview` : 'No preview';
 
   return (
@@ -121,7 +128,6 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
 
       {/* Card count */}
       <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
-      <p className="text-[9px] lg:text-[10px] text-white/35 mb-1">Stages {Math.min(stageDone, levelConfig.stageCount)}/{levelConfig.stageCount}</p>
 
       {levelConfig.boss && (
         <p className="text-[9px] lg:text-[10px] text-amber-300 mb-1">Boss Level · {levelConfig.relic} reward</p>
@@ -315,21 +321,30 @@ export default function LevelSelector({ onStart, onStartWeekly }: LevelSelectorP
                     transition={{ duration: 0.25, ease: 'easeInOut' }}
                     className="overflow-hidden bg-[#1e293b]"
                   >
-                    <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                      {ERA_LEVEL_CONFIGS[era.id].map((levelConfig) => {
-                        const lvlLocked = !isLevelUnlocked(era.id, levelConfig.level, levelProgress);
-                        return (
-                          <LevelButton
-                            key={levelConfig.level}
-                            eraConfig={era}
-                            levelConfig={levelConfig}
-                            progress={getLevelProgress(era.id, levelConfig.level, levelProgress)}
-                            locked={lvlLocked}
-                            themeAccent={themeAccent}
-                            onSelect={() => handleLevelSelect(era.id, levelConfig.level)}
-                          />
-                        );
-                      })}
+                    <div className="p-3 space-y-3">
+                      {chunkLevels(ERA_LEVEL_CONFIGS[era.id], 10).map((group, groupIndex) => (
+                        <div key={`${era.id}-${groupIndex}`} className="space-y-2">
+                          <div className="text-[10px] uppercase tracking-widest text-white/35 px-1">
+                            Levels {group[0].level}-{group[group.length - 1].level}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                            {group.map((levelConfig) => {
+                              const lvlLocked = !isLevelUnlocked(era.id, levelConfig.level, levelProgress);
+                              return (
+                                <LevelButton
+                                  key={levelConfig.level}
+                                  eraConfig={era}
+                                  levelConfig={levelConfig}
+                                  progress={getLevelProgress(era.id, levelConfig.level, levelProgress)}
+                                  locked={lvlLocked}
+                                  themeAccent={themeAccent}
+                                  onSelect={() => handleLevelSelect(era.id, levelConfig.level)}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </motion.div>
                 )}

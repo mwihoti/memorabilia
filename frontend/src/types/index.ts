@@ -430,79 +430,82 @@ export interface RunAnalytics {
 
 // ── Era Level Configs ─────────────────────────────────────────────────────────
 
-const ERA_LEVEL_LABELS: Record<Difficulty, string[]> = {
-  [Difficulty.Easy]:   ['Apprentice', 'Scholar', 'Sage', 'Elder', 'Oracle', 'Curator', 'Chronomancer'],
-  [Difficulty.Medium]: ['Squire', 'Knight', 'Baron', 'Count', 'Lord', 'Marshal', 'Sovereign'],
-  [Difficulty.Hard]:   ['Intern', 'Engineer', 'Senior', 'Principal', 'Legend', 'Architect', 'Visionary'],
-  [Difficulty.Expert]: ['Scout', 'Navigator', 'Cipher', 'Operator', 'Admiral', 'Singularity', 'Overseer'],
-  [Difficulty.Master]: ['Seeker', 'Warden', 'Invoker', 'Titan', 'Dragonheart', 'Ascendant', 'Eternal'],
+const ERA_LEVEL_TITLES: Record<Difficulty, string[]> = {
+  [Difficulty.Easy]:   ['Apprentice', 'Scholar', 'Sage', 'Elder', 'Oracle'],
+  [Difficulty.Medium]: ['Squire', 'Knight', 'Baron', 'Count', 'Lord'],
+  [Difficulty.Hard]:   ['Intern', 'Engineer', 'Senior', 'Principal', 'Legend'],
+  [Difficulty.Expert]: ['Scout', 'Navigator', 'Cipher', 'Operator', 'Admiral'],
+  [Difficulty.Master]: ['Seeker', 'Warden', 'Invoker', 'Titan', 'Dragonheart'],
 };
 
-function buildEraLevels(era: Difficulty): EraLevel[] {
-  const labels = ERA_LEVEL_LABELS[era];
-  return [
-    {
-      era, level: 1, stageCount: 50, cardCount: 8, pairCount: 4, optimalMoves: 8, previewDuration: 5000,
-      timeLimitGold: 60, timeLimitSilver: 90, timeLimitBronze: 120, label: labels[0],
-      mechanics: era === Difficulty.Easy ? ['Sandstorm starts lightly'] : era === Difficulty.Medium ? ['Shielded mismatches'] : ['Pulse scan preview'],
-      minimumPairDistance: 2,
-      pattern: 'zigzag',
-    },
-    {
-      era, level: 2, stageCount: 50, cardCount: 12, pairCount: 6, optimalMoves: 12, previewDuration: 4500,
-      timeLimitGold: 80, timeLimitSilver: 120, timeLimitBronze: 160, label: labels[1],
-      mechanics: ['Hint charge unlocked'],
-      minimumPairDistance: 2,
-      pattern: 'columns',
-    },
-    {
-      era, level: 3, stageCount: 100, cardCount: 16, pairCount: 8, optimalMoves: 16, previewDuration: 4000,
-      timeLimitGold: 100, timeLimitSilver: 150, timeLimitBronze: 200, label: labels[2],
-      mechanics: ['Freeze burst unlocked', 'Decoy-style symbols appear'],
-      minimumPairDistance: 3,
-      pattern: 'zigzag',
-    },
-    {
-      era, level: 4, stageCount: 100, cardCount: 20, pairCount: 10, optimalMoves: 20, previewDuration: 3200,
-      timeLimitGold: 120, timeLimitSilver: 180, timeLimitBronze: 240, label: labels[3],
-      mechanics: ['Trap reshuffle unlocked', 'Board twists under pressure'],
-      minimumPairDistance: 3,
-      pattern: 'spiral',
-    },
-    {
-      era, level: 5, stageCount: 100, cardCount: 24, pairCount: 12, optimalMoves: 24, previewDuration: 2600,
-      timeLimitGold: 150, timeLimitSilver: 225, timeLimitBronze: 300, label: labels[4],
-      mechanics: ['Boss level', 'All era powers active', 'Multiplier charge unlocked'],
-      boss: true,
-      relic:
-        era === Difficulty.Easy ? 'Sun Relic' :
-        era === Difficulty.Medium ? 'Crown Relic' :
-        era === Difficulty.Hard ? 'Nova Relic' :
-        era === Difficulty.Expert ? 'Quantum Relic' : 'Mythic Relic',
-      minimumPairDistance: 4,
-      pattern: 'spiral',
-    },
-    {
-      era, level: 6, stageCount: 100, cardCount: 28, pairCount: 14, optimalMoves: 28, previewDuration: 1800,
-      timeLimitGold: 180, timeLimitSilver: 260, timeLimitBronze: 340, label: labels[5],
-      mechanics: ['Elite gauntlet', 'Frequent board twists', 'Long-range pairs only'],
-      minimumPairDistance: 4,
-      pattern: 'columns',
-    },
-    {
-      era, level: 7, stageCount: 100, cardCount: 32, pairCount: 16, optimalMoves: 32, previewDuration: 1200,
-      timeLimitGold: 210, timeLimitSilver: 300, timeLimitBronze: 390, label: labels[6],
-      mechanics: ['Final boss', 'Maximum distance pairs', 'All powers pressured'],
-      boss: true,
-      relic:
-        era === Difficulty.Easy ? 'Solar Archive' :
-        era === Difficulty.Medium ? 'Royal Archive' :
-        era === Difficulty.Hard ? 'Starlight Archive' :
-        era === Difficulty.Expert ? 'Nexus Archive' : 'Eternal Archive',
-      minimumPairDistance: 5,
-      pattern: 'spiral',
-    },
+const LEVEL_COUNT_BY_ERA: Record<Difficulty, number> = {
+  [Difficulty.Easy]: 50,
+  [Difficulty.Medium]: 50,
+  [Difficulty.Hard]: 100,
+  [Difficulty.Expert]: 100,
+  [Difficulty.Master]: 100,
+};
+
+function getLevelLabel(era: Difficulty, level: number): string {
+  const titles = ERA_LEVEL_TITLES[era];
+  const tier = Math.ceil(level / 10);
+  const title = titles[Math.min(tier - 1, titles.length - 1)];
+  return `${title} ${level}`;
+}
+
+function getLevelMechanics(era: Difficulty, level: number): string[] {
+  const progressBand = Math.ceil(level / 10);
+  const common = [
+    'Pattern-based board',
+    progressBand >= 2 ? 'Hint charge unlocked' : 'Memory warmup',
+    progressBand >= 3 ? 'Freeze burst unlocked' : 'Clean reveal pacing',
   ];
+
+  if (era === Difficulty.Easy) return progressBand >= 4 ? ['Sandstorm veils', ...common] : common;
+  if (era === Difficulty.Medium) return progressBand >= 4 ? ['Shielded mismatch buffer', ...common] : common;
+  if (era === Difficulty.Hard) return progressBand >= 4 ? ['Pulse scan preview', ...common] : common;
+  if (era === Difficulty.Expert) return progressBand >= 4 ? ['Decoy pressure rises', ...common] : common;
+  return progressBand >= 4 ? ['Mythic pressure spikes', ...common] : common;
+}
+
+function buildEraLevels(era: Difficulty): EraLevel[] {
+  const totalLevels = LEVEL_COUNT_BY_ERA[era];
+
+  return Array.from({ length: totalLevels }, (_, index) => {
+    const level = index + 1;
+    const progress = index / Math.max(totalLevels - 1, 1);
+    const difficultyBias =
+      era === Difficulty.Easy ? 0 :
+      era === Difficulty.Medium ? 1 :
+      era === Difficulty.Hard ? 2 :
+      era === Difficulty.Expert ? 3 : 4;
+    const pairCount = Math.min(16, 4 + Math.floor(index / 8) + difficultyBias);
+    const cardCount = pairCount * 2;
+    const previewDuration = Math.max(1000, Math.round(5000 - progress * 3800 - difficultyBias * 250));
+    const goldBase = 55 + pairCount * 7 + difficultyBias * 8;
+    const boss = level % 10 === 0;
+    const minimumPairDistance = Math.min(5, 2 + Math.floor(index / 20) + Math.floor(difficultyBias / 2));
+    const pattern = boss ? 'spiral' : level % 3 === 0 ? 'columns' : 'zigzag';
+
+    return {
+      era,
+      level,
+      stageCount: 1,
+      cardCount,
+      pairCount,
+      optimalMoves: cardCount,
+      previewDuration,
+      timeLimitGold: goldBase,
+      timeLimitSilver: Math.round(goldBase * 1.5),
+      timeLimitBronze: Math.round(goldBase * 2),
+      label: getLevelLabel(era, level),
+      mechanics: getLevelMechanics(era, level),
+      boss,
+      relic: boss ? `${getDifficultyMeta(era).shortLabel} Relic ${level / 10}` : undefined,
+      minimumPairDistance,
+      pattern,
+    };
+  });
 }
 
 export const ERA_LEVEL_CONFIGS: Record<Difficulty, EraLevel[]> = {
