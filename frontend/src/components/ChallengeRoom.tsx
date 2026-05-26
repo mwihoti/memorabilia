@@ -12,8 +12,8 @@ interface ChallengeRoomProps {
 }
 
 function buildShareLink(roomId: string): string {
-  const url = new URL(window.location.href);
-  url.searchParams.set('room', roomId);
+  const url = new URL(window.location.origin + window.location.pathname);
+  url.searchParams.set('room', roomId.toUpperCase());
   return url.toString();
 }
 

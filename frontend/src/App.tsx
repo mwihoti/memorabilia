@@ -28,6 +28,16 @@ import { ChallengeRoom as ChallengeRoomData, createChallengeRoom } from './lib/a
 
 type Screen = 'loading' | 'name-entry' | 'difficulty' | 'level-select' | 'challenge-room' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
 
+function buildCleanRoomUrl(roomId: string): string {
+  const url = new URL(window.location.origin + window.location.pathname);
+  url.searchParams.set('room', roomId.toUpperCase());
+  return url.toString();
+}
+
+function buildCleanAppUrl(): string {
+  return window.location.origin + window.location.pathname;
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [isInitializing, setIsInitializing] = useState(true);
@@ -238,9 +248,7 @@ function App() {
       seed: Math.floor(Math.random() * 2_000_000_000),
     });
 
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set('room', room.id);
-    window.history.replaceState({}, '', nextUrl.toString());
+    window.history.replaceState({}, '', buildCleanRoomUrl(room.id));
     setActiveRoomId(room.id);
     setPendingRoomId(room.id);
     setScreen('challenge-room');
@@ -258,9 +266,7 @@ function App() {
   };
 
   const handleLeaveRoom = () => {
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete('room');
-    window.history.replaceState({}, '', nextUrl.toString());
+    window.history.replaceState({}, '', buildCleanAppUrl());
     setActiveRoomId(null);
     setPendingRoomId(null);
     setScreen('level-select');
