@@ -357,7 +357,7 @@ export function seededShuffle<T>(array: T[], seed: number): T[] {
 
 // ── Level-aware game creation ─────────────────────────────────────────────────
 
-export function createLevelGame(era: Difficulty, level: number, seed?: number): GameState {
+export function createLevelGame(era: Difficulty, level: number, seed?: number, stage = 1): GameState {
   const config     = ERA_LEVEL_CONFIGS[era][level - 1];
   const { pairCount } = config;
 
@@ -374,8 +374,9 @@ export function createLevelGame(era: Difficulty, level: number, seed?: number): 
   }
 
   const candidateColumns = getCandidateColumns(pairCount * 2);
+  const stageSeedOffset = stage * 101;
   const baseValues = seed !== undefined
-    ? shuffleValuesAvoidingAdjacency(values, candidateColumns, config.minimumPairDistance ?? 2, mulberry32(seed + 1))
+    ? shuffleValuesAvoidingAdjacency(values, candidateColumns, config.minimumPairDistance ?? 2, mulberry32(seed + 1 + stageSeedOffset))
     : shuffleValuesAvoidingAdjacency(values, candidateColumns, config.minimumPairDistance ?? 2);
   const arrangedValues = arrangeValuesByPattern(
     baseValues,

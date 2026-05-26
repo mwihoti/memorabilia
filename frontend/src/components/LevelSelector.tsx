@@ -85,6 +85,7 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
   const isComplete = progress?.completed ?? false;
   const medal      = progress?.bestMedal ?? 'none';
   const stars      = progress?.stars ?? 0;
+  const stageDone  = progress?.highestStageCompleted ?? 0;
   const previewSec = levelConfig.previewDuration > 0 ? `${levelConfig.previewDuration / 1000}s preview` : 'No preview';
 
   return (
@@ -120,6 +121,7 @@ function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAcce
 
       {/* Card count */}
       <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
+      <p className="text-[9px] lg:text-[10px] text-white/35 mb-1">Stages {Math.min(stageDone, levelConfig.stageCount)}/{levelConfig.stageCount}</p>
 
       {levelConfig.boss && (
         <p className="text-[9px] lg:text-[10px] text-amber-300 mb-1">Boss Level · {levelConfig.relic} reward</p>

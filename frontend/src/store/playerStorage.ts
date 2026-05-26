@@ -1,5 +1,5 @@
 // Local storage for player scores and stats in demo mode
-import { DIFFICULTY_ORDER, GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal, RelicReward, getDifficultyMeta } from '../types';
+import { DIFFICULTY_ORDER, GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal, RelicReward, getDifficultyMeta, getStageCountForLevel } from '../types';
 
 const STORAGE_KEY = 'memorabilia_player_data';
 const LEADERBOARD_KEY = 'memorabilia_leaderboard';
@@ -255,7 +255,11 @@ export function getLeaderboardStats() {
 export function getAllLevelProgress(): LevelProgress[] {
   try {
     const data = localStorage.getItem(LEVEL_PROGRESS_KEY);
-    return data ? JSON.parse(data) : [];
+    const parsed = data ? JSON.parse(data) as LevelProgress[] : [];
+    return parsed.map((entry) => ({
+      ...entry,
+      highestStageCompleted: entry.highestStageCompleted ?? (entry.completed ? getStageCountForLevel(entry.era, entry.level) : 0),
+    }));
   } catch {
     return [];
   }
@@ -284,6 +288,7 @@ export function saveLevelProgress(incoming: LevelProgress): void {
     era:       incoming.era,
     level:     incoming.level,
     completed: incoming.completed || (existing?.completed ?? false),
+    highestStageCompleted: Math.max(incoming.highestStageCompleted ?? 0, existing?.highestStageCompleted ?? 0),
     bestScore: Math.max(incoming.bestScore, existing?.bestScore ?? 0),
     bestTime:  existing?.bestTime
       ? Math.min(incoming.bestTime, existing.bestTime)
@@ -296,7 +301,7 @@ export function saveLevelProgress(incoming: LevelProgress): void {
   if (index !== -1) {
     all[index] = merged;
   } else {
-    all.push(merged);
+    all.push({ ...merged, highestStageCompleted: merged.highestStageCompleted ?? 0 });
   }
 
   saveAllLevelProgress(all);

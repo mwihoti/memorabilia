@@ -310,6 +310,7 @@ export function getCardEmoji(value: number): string {
 export interface EraLevel {
   era: Difficulty;
   level: number; // 1-5
+  stageCount: number;
   cardCount: number;
   pairCount: number;
   optimalMoves: number;
@@ -331,6 +332,7 @@ export interface LevelProgress {
   era: Difficulty;
   level: number;
   completed: boolean;
+  highestStageCompleted: number;
   bestScore: number;
   bestTime: number;     // seconds
   bestMedal: TimeMedal;
@@ -384,6 +386,7 @@ export interface GhostReplay {
   gameId: number;
   era: Difficulty;
   level: number;
+  stage: number;
   moves: ReplayMove[];
   totalTime: number; // ms
   score: number;
@@ -439,35 +442,35 @@ function buildEraLevels(era: Difficulty): EraLevel[] {
   const labels = ERA_LEVEL_LABELS[era];
   return [
     {
-      era, level: 1, cardCount: 8, pairCount: 4, optimalMoves: 8, previewDuration: 5000,
+      era, level: 1, stageCount: 50, cardCount: 8, pairCount: 4, optimalMoves: 8, previewDuration: 5000,
       timeLimitGold: 60, timeLimitSilver: 90, timeLimitBronze: 120, label: labels[0],
       mechanics: era === Difficulty.Easy ? ['Sandstorm starts lightly'] : era === Difficulty.Medium ? ['Shielded mismatches'] : ['Pulse scan preview'],
       minimumPairDistance: 2,
       pattern: 'zigzag',
     },
     {
-      era, level: 2, cardCount: 12, pairCount: 6, optimalMoves: 12, previewDuration: 4500,
+      era, level: 2, stageCount: 50, cardCount: 12, pairCount: 6, optimalMoves: 12, previewDuration: 4500,
       timeLimitGold: 80, timeLimitSilver: 120, timeLimitBronze: 160, label: labels[1],
       mechanics: ['Hint charge unlocked'],
       minimumPairDistance: 2,
       pattern: 'columns',
     },
     {
-      era, level: 3, cardCount: 16, pairCount: 8, optimalMoves: 16, previewDuration: 4000,
+      era, level: 3, stageCount: 100, cardCount: 16, pairCount: 8, optimalMoves: 16, previewDuration: 4000,
       timeLimitGold: 100, timeLimitSilver: 150, timeLimitBronze: 200, label: labels[2],
       mechanics: ['Freeze burst unlocked', 'Decoy-style symbols appear'],
       minimumPairDistance: 3,
       pattern: 'zigzag',
     },
     {
-      era, level: 4, cardCount: 20, pairCount: 10, optimalMoves: 20, previewDuration: 3200,
+      era, level: 4, stageCount: 100, cardCount: 20, pairCount: 10, optimalMoves: 20, previewDuration: 3200,
       timeLimitGold: 120, timeLimitSilver: 180, timeLimitBronze: 240, label: labels[3],
       mechanics: ['Trap reshuffle unlocked', 'Board twists under pressure'],
       minimumPairDistance: 3,
       pattern: 'spiral',
     },
     {
-      era, level: 5, cardCount: 24, pairCount: 12, optimalMoves: 24, previewDuration: 2600,
+      era, level: 5, stageCount: 100, cardCount: 24, pairCount: 12, optimalMoves: 24, previewDuration: 2600,
       timeLimitGold: 150, timeLimitSilver: 225, timeLimitBronze: 300, label: labels[4],
       mechanics: ['Boss level', 'All era powers active', 'Multiplier charge unlocked'],
       boss: true,
@@ -480,14 +483,14 @@ function buildEraLevels(era: Difficulty): EraLevel[] {
       pattern: 'spiral',
     },
     {
-      era, level: 6, cardCount: 28, pairCount: 14, optimalMoves: 28, previewDuration: 1800,
+      era, level: 6, stageCount: 100, cardCount: 28, pairCount: 14, optimalMoves: 28, previewDuration: 1800,
       timeLimitGold: 180, timeLimitSilver: 260, timeLimitBronze: 340, label: labels[5],
       mechanics: ['Elite gauntlet', 'Frequent board twists', 'Long-range pairs only'],
       minimumPairDistance: 4,
       pattern: 'columns',
     },
     {
-      era, level: 7, cardCount: 32, pairCount: 16, optimalMoves: 32, previewDuration: 1200,
+      era, level: 7, stageCount: 100, cardCount: 32, pairCount: 16, optimalMoves: 32, previewDuration: 1200,
       timeLimitGold: 210, timeLimitSilver: 300, timeLimitBronze: 390, label: labels[6],
       mechanics: ['Final boss', 'Maximum distance pairs', 'All powers pressured'],
       boss: true,
@@ -576,6 +579,20 @@ export function isEraUnlocked(era: Difficulty, levelProgress: LevelProgress[]): 
 
 export function getMaxLevelForEra(era: Difficulty): number {
   return ERA_LEVEL_CONFIGS[era]?.length ?? 0;
+}
+
+export function getStageCountForLevel(era: Difficulty, level: number): number {
+  return ERA_LEVEL_CONFIGS[era]?.[level - 1]?.stageCount ?? 1;
+}
+
+export function getNextStageForLevel(
+  era: Difficulty,
+  level: number,
+  levelProgress: LevelProgress[]
+): number {
+  const progress = levelProgress.find((lp) => lp.era === era && lp.level === level);
+  const stageCount = getStageCountForLevel(era, level);
+  return Math.min((progress?.highestStageCompleted ?? 0) + 1, stageCount);
 }
 
 export function getTotalLevelCount(): number {

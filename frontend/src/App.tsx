@@ -3,7 +3,7 @@ import { useGameStore } from './store/gameStore';
 import { setupDojo, createBurnerAccount } from './dojo/setup';
 import { createGameController } from './dojo/gameController';
 import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp } from './telegram/telegram';
-import { GhostReplay, Difficulty, getMaxLevelForEra } from './types';
+import { GhostReplay, Difficulty, getMaxLevelForEra, getNextStageForLevel, getStageCountForLevel } from './types';
 import { loadGhostReplay } from './store/ghostReplay';
 
 // Components
@@ -49,6 +49,8 @@ function App() {
     startWeeklyChallenge,
     currentEra,
     currentLevel,
+    currentStage,
+    levelProgress,
     newlyUnlockedAchievements,
     clearNewAchievements,
   } = useGameStore();
@@ -135,7 +137,7 @@ function App() {
   const handleWinModalClose = () => {
     // Check if a ghost replay is available for the completed era/level
     if (currentEra !== null) {
-      const replay = loadGhostReplay(currentEra, currentLevel);
+      const replay = loadGhostReplay(currentEra, currentLevel, currentStage);
       if (replay) {
         setGhostReplayData(replay);
       }
@@ -146,17 +148,23 @@ function App() {
 
   const handleNextLevel = async () => {
     if (currentEra === null) return;
+    const stageCount = getStageCountForLevel(currentEra, currentLevel);
+    const nextStage = currentStage + 1;
     const nextLevel = currentLevel + 1;
-    if (nextLevel > getMaxLevelForEra(currentEra)) return;
     resetGame();
-    await startLevelGame(currentEra, nextLevel, false);
+    if (nextStage <= stageCount) {
+      await startLevelGame(currentEra, currentLevel, false, nextStage);
+    } else {
+      if (nextLevel > getMaxLevelForEra(currentEra)) return;
+      await startLevelGame(currentEra, nextLevel, false, 1);
+    }
     setScreen('game');
   };
 
   const handleShowGhostReplay = () => {
     // Load the latest best replay when triggered from WinModal
     if (currentEra !== null) {
-      const replay = loadGhostReplay(currentEra, currentLevel);
+      const replay = loadGhostReplay(currentEra, currentLevel, currentStage);
       if (replay) {
         setGhostReplayData(replay);
         setShowGhostReplay(true);
@@ -195,7 +203,8 @@ function App() {
   };
 
   const handleLevelStart = async (era: Difficulty, level: number, isDailyChallenge: boolean) => {
-    await startLevelGame(era, level, isDailyChallenge);
+    const stage = isDailyChallenge ? 1 : getNextStageForLevel(era, level, levelProgress);
+    await startLevelGame(era, level, isDailyChallenge, stage);
     setScreen('game');
   };
 
@@ -289,7 +298,7 @@ function App() {
         {showWinModal && (
           <WinModal
             onClose={handleWinModalClose}
-            onNextLevel={currentEra !== null && currentLevel < getMaxLevelForEra(currentEra) ? handleNextLevel : undefined}
+            onNextLevel={currentEra !== null ? handleNextLevel : undefined}
             onShowGhostReplay={handleShowGhostReplay}
           />
         )}

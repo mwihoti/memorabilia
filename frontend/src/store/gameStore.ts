@@ -139,6 +139,7 @@ interface GameStore {
   // ── Level System State ─────────────────────────────────────────────────────
   currentEra: Difficulty | null;
   currentLevel: number;
+  currentStage: number;
   combo: ComboState;
   mismatches: number;
   maxCombo: number;
@@ -191,8 +192,8 @@ interface GameStore {
   resetGame: () => void;
 
   // ── Level System Actions ───────────────────────────────────────────────────
-  setCurrentLevel: (era: Difficulty, level: number) => void;
-  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean) => Promise<void>;
+  setCurrentLevel: (era: Difficulty, level: number, stage?: number) => void;
+  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean, stage?: number) => Promise<void>;
   startWeeklyChallenge: () => Promise<void>;
   clearNewAchievements: () => void;
   loadLevelProgress: () => void;
@@ -247,6 +248,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Level System initial state
   currentEra: null,
   currentLevel: 1,
+  currentStage: 1,
   combo: { count: 0, multiplier: 1 },
   mismatches: 0,
   maxCombo: 0,
@@ -539,7 +541,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
         // ── Combo tracking (demo mode only) ───────────────────────────────
         const {
-          combo, maxCombo: prevMaxCombo, replayMoves, gameStartMs, currentEra, currentLevel,
+          combo, maxCombo: prevMaxCombo, replayMoves, gameStartMs, currentEra, currentLevel, currentStage,
           pendingMultiplier, multiplierMatches,
         } = get();
         const newComboCount  = !gameController ? combo.count + 1 : combo.count;
@@ -616,7 +618,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const progress: LevelProgress = {
               era:         currentEra,
               level:       currentLevel,
-              completed:   true,
+              completed:   currentStage >= levelConfig.stageCount,
+              highestStageCompleted: currentStage,
               bestScore:   levelScore,
               bestTime:    elapsedSeconds,
               bestMedal:   medal,
@@ -641,6 +644,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               finalGame.game_id,
               currentEra,
               currentLevel,
+              currentStage,
               finalReplayMoves,
               completedAt - currentGame.started_at,
               levelScore,
@@ -828,16 +832,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   // ── Level System Actions ───────────────────────────────────────────────────
 
-  setCurrentLevel: (era: Difficulty, level: number) => {
-    set({ currentEra: era, currentLevel: level });
+  setCurrentLevel: (era: Difficulty, level: number, stage = 1) => {
+    set({ currentEra: era, currentLevel: level, currentStage: stage });
   },
 
-  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false) => {
+  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false, stage = 1) => {
     set({ isGameLoading: true });
     try {
       const actions = buildLevelActions(era, level);
       const dailySeed = isDailyChallenge ? getDailyChallengeConfig().seed : undefined;
-      const newGame = createLevelGame(era, level, dailySeed);
+      const newGame = createLevelGame(era, level, dailySeed, stage);
       set({
         currentGame:               newGame,
         selectedDifficulty:        era,
@@ -846,6 +850,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         showWinModal:              false,
         currentEra:                era,
         currentLevel:              level,
+        currentStage:              stage,
         combo:                     { count: 0, multiplier: 1 },
         mismatches:                0,
         maxCombo:                  0,
@@ -883,7 +888,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       const config = getWeeklyChallengeConfig();
       const actions = buildLevelActions(config.difficulty, config.level);
-      const newGame = createLevelGame(config.difficulty, config.level, config.seed);
+      const newGame = createLevelGame(config.difficulty, config.level, config.seed, 1);
       set({
         currentGame:               newGame,
         selectedDifficulty:        config.difficulty,
@@ -892,6 +897,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         showWinModal:              false,
         currentEra:                config.difficulty,
         currentLevel:              config.level,
+        currentStage:              1,
         combo:                     { count: 0, multiplier: 1 },
         mismatches:                0,
         maxCombo:                  0,
