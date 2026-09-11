@@ -8,6 +8,6 @@
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "@vercel/node": "^5.7.0"
+    "@vercel/node": "^5.10.2"
   }
 }
