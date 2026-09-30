@@ -1,0 +1,297 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Memorabilia — Time-Travel Museum design system
+   Dark gallery palette, gold leaf accents, parchment surfaces.
+   Every token lives here; components reference them, never raw hex.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Gallery ground — deepest to lightest */
+  --mu-void:        #060a14;
+  --mu-bg:          #0a1020;
+  --mu-bg-2:        #0e1526;
+  --mu-panel:       #111a2e;
+  --mu-panel-2:     #16203a;
+  --mu-raised:      #1b2644;
+
+  /* Gold leaf */
+  --mu-gold:        #e8b44a;
+  --mu-gold-bright: #f5cd6d;
+  --mu-gold-deep:   #b8862c;
+  --mu-gold-dim:    rgba(232, 180, 74, 0.5);
+
+  /* Ink */
+  --mu-ivory:       #f3ead7;
+  --mu-text:        #e6ecf7;
+  --mu-muted:       #8d9bb5;
+  --mu-faint:       #5b6880;
+
+  /* Lines */
+  --mu-line:        rgba(232, 180, 74, 0.18);
+  --mu-line-soft:   rgba(255, 255, 255, 0.07);
+  --mu-line-strong: rgba(232, 180, 74, 0.42);
+
+  /* Parchment surfaces — the dashboard stat tiles */
+  --mu-parch:       #e9dcc0;
+  --mu-parch-2:     #dccfb0;
+  --mu-parch-ink:   #3a2f1c;
+  --mu-parch-muted: #7a6a4c;
+
+  /* Status */
+  --mu-good:        #4ade80;
+  --mu-warn:        #fbbf24;
+  --mu-bad:         #f87171;
+  --mu-info:        #60a5fa;
+
+  /* Geometry */
+  --mu-r-sm:  10px;
+  --mu-r:     14px;
+  --mu-r-lg:  20px;
+
+  /* Chrome sizing — consumed by the shell layout */
+  --mu-rail:     84px;   /* desktop icon rail   */
+  --mu-rail-lg: 212px;   /* desktop wide rail   */
+  --mu-topbar:   60px;
+  --mu-dock:     64px;   /* mobile bottom dock  */
+
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+
+.font-display {
+  font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.font-ui {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Small caps eyebrow used above every screen title */
+.mu-eyebrow {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--mu-gold);
+}
+
+/* The wordmark — gold-leaf gradient with a soft halo */
+.mu-wordmark {
+  background: linear-gradient(175deg, #fff8e6 0%, var(--mu-ivory) 38%, #d9c08a 72%, #b99a55 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 22px rgba(232, 180, 74, 0.28));
+}
+
+.mu-gold-text {
+  background: linear-gradient(135deg, var(--mu-gold-bright), var(--mu-gold-deep));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Surfaces ────────────────────────────────────────────────────────────── */
+
+/* The workhorse panel: every card, tile and module on a dark screen */
+.mu-panel {
+  background: linear-gradient(160deg, var(--mu-panel) 0%, var(--mu-bg-2) 100%);
+  border: 1px solid var(--mu-line-soft);
+  border-radius: var(--mu-r);
+  position: relative;
+}
+
+/* Panel that should read as "selected" or "primary" */
+.mu-panel-gold {
+  background: linear-gradient(160deg, rgba(232, 180, 74, 0.09) 0%, rgba(232, 180, 74, 0.02) 100%);
+  border: 1px solid var(--mu-line-strong);
+  border-radius: var(--mu-r);
+  box-shadow: 0 0 0 1px rgba(232, 180, 74, 0.06), 0 8px 34px -18px rgba(232, 180, 74, 0.55);
+}
+
+/* Parchment tile — dashboard statistics */
+.mu-parchment {
+  background:
+    radial-gradient(120% 90% at 18% 8%, rgba(255, 255, 255, 0.5) 0%, transparent 55%),
+    linear-gradient(158deg, var(--mu-parch) 0%, var(--mu-parch-2) 100%);
+  border: 1px solid rgba(120, 96, 56, 0.34);
+  border-radius: var(--mu-r);
+  color: var(--mu-parch-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 28px -20px rgba(0, 0, 0, 0.9);
+}
+
+/* Hairline divider that fades at both ends */
+.mu-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--mu-line-strong), transparent);
+  border: 0;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.mu-btn-gold {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: linear-gradient(180deg, var(--mu-gold-bright) 0%, var(--mu-gold) 46%, var(--mu-gold-deep) 100%);
+  color: #2a1e06;
+  font-weight: 700;
+  border: 1px solid rgba(255, 234, 186, 0.55);
+  border-radius: var(--mu-r-sm);
+  box-shadow: 0 10px 30px -12px rgba(232, 180, 74, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: filter 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.mu-btn-gold:hover:not(:disabled) {
+  filter: brightness(1.07);
+  box-shadow: 0 14px 38px -12px rgba(232, 180, 74, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.mu-btn-gold:active:not(:disabled) { transform: translateY(1px); }
+.mu-btn-gold:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.mu-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--mu-text);
+  font-weight: 600;
+  border: 1px solid var(--mu-line-soft);
+  border-radius: var(--mu-r-sm);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.mu-btn-ghost:hover:not(:disabled) {
+  background: rgba(232, 180, 74, 0.08);
+  border-color: var(--mu-line);
+}
+.mu-btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Form fields ─────────────────────────────────────────────────────────── */
+
+.mu-field {
+  width: 100%;
+  background: rgba(6, 10, 20, 0.66);
+  border: 1px solid var(--mu-line);
+  border-radius: var(--mu-r-sm);
+  color: var(--mu-ivory);
+  text-align: center;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.mu-field::placeholder { color: var(--mu-faint); font-weight: 400; }
+.mu-field:focus {
+  border-color: var(--mu-gold);
+  box-shadow: 0 0 0 3px rgba(232, 180, 74, 0.16);
+}
+
+/* ── Progress ────────────────────────────────────────────────────────────── */
+
+.mu-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.mu-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--mu-gold-deep), var(--mu-gold-bright));
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(232, 180, 74, 0.45);
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+
+.mu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: 1px solid var(--mu-line-soft);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--mu-muted);
+  white-space: nowrap;
+}
+.mu-chip-gold {
+  border-color: var(--mu-line-strong);
+  background: rgba(232, 180, 74, 0.12);
+  color: var(--mu-gold-bright);
+}
+
+/* ── Gallery ambience ────────────────────────────────────────────────────── */
+
+/* Vignette + warm floor bounce, painted over the animated canvas */
+.mu-vignette::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    radial-gradient(130% 78% at 50% -12%, rgba(232, 180, 74, 0.10) 0%, transparent 60%),
+    radial-gradient(100% 62% at 50% 118%, rgba(232, 180, 74, 0.07) 0%, transparent 58%),
+    radial-gradient(150% 108% at 50% 50%, transparent 40%, rgba(3, 6, 14, 0.72) 100%);
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+
+@media (pointer: fine) {
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--mu-void); }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(232, 180, 74, 0.22);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(232, 180, 74, 0.38); }
+}
+
+/* Hide scrollbar but keep scrolling — horizontal level strips */
+.mu-noscroll { scrollbar-width: none; -ms-overflow-style: none; }
+.mu-noscroll::-webkit-scrollbar { display: none; }
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+
+@keyframes mu-shimmer {
+  0%   { background-position: -220% 0; }
+  100% { background-position:  220% 0; }
+}
+.mu-shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 38%,
+    rgba(255, 245, 214, 0.42) 50%,
+    transparent 62%
+  );
+  background-size: 220% 100%;
+  animation: mu-shimmer 3.4s ease-in-out infinite;
+}
+
+@keyframes mu-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.04); }
+}
+.mu-breathe { animation: mu-breathe 3.6s ease-in-out infinite; }
+
+@keyframes mu-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mu-rise { animation: mu-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Respect the system setting — the background canvas checks this too */
+@media (prefers-reduced-motion: reduce) {
+  .mu-shimmer,
+  .mu-breathe,
+  .mu-rise { animation: none !important; }
+  * { scroll-behavior: auto !important; }
+}

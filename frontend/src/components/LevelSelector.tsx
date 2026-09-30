@@ -1,15 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import {
-  Difficulty, ERA_LEVEL_CONFIGS, EraLevel, LevelProgress,
-  DIFFICULTY_ORDER, getDifficultyMeta, getMaxLevelForEra, isEraUnlocked, isLevelUnlocked, TimeMedal,
+  Difficulty,
+  ERA_LEVEL_CONFIGS,
+  LevelProgress,
+  DIFFICULTY_ORDER,
+  getDifficultyMeta,
+  getMaxLevelForEra,
+  isEraUnlocked,
+  isLevelUnlocked,
+  TimeMedal,
 } from '../types';
-import { loadDailyChallenge, getDailyChallengeConfig, isDailyChallengeCompleted } from '../store/dailyChallenge';
+import {
+  loadDailyChallenge,
+  getDailyChallengeConfig,
+  isDailyChallengeCompleted,
+  getWeeklyChallengeConfig,
+  isWeeklyChallengeCompleted,
+} from '../store/dailyChallenge';
+import { getEraSkin } from '../theme/cardSkins';
+import { fetchLeaderboard, LeaderboardRow } from '../lib/api';
 import { hapticImpact } from '../telegram/telegram';
 import MedalBadge from './MedalBadge';
-import StreakBanner from './StreakBanner';
-import DailyChallengeCard from './DailyChallengeCard';
 
 interface LevelSelectorProps {
   onStart: (era: Difficulty, level: number, isDailyChallenge?: boolean) => void;
@@ -17,373 +30,478 @@ interface LevelSelectorProps {
   onCreateChallenge: (era: Difficulty, level: number) => void;
 }
 
-// ── Era definitions ────────────────────────────────────────────────────────────
+export default function LevelSelector({
+  onStart,
+  onStartWeekly,
+  onCreateChallenge,
+}: LevelSelectorProps) {
+  const { levelProgress } = useGameStore();
+  const [openEra, setOpenEra] = useState<Difficulty | null>(null);
+  const [board, setBoard] = useState<LeaderboardRow[]>([]);
 
-interface EraConfig {
-  id: Difficulty;
-  label: string;
-  icon: string;
-  gradient: string;
-  lockedBy: string;
-}
+  const daily = getDailyChallengeConfig();
+  const dailyDone = isDailyChallengeCompleted();
+  const dailyState = loadDailyChallenge();
+  const weekly = getWeeklyChallengeConfig();
+  const weeklyDone = isWeeklyChallengeCompleted();
 
-const ERAS: EraConfig[] = [
-  ...DIFFICULTY_ORDER.map((difficulty, index) => {
-    const meta = getDifficultyMeta(difficulty);
-    const gradients = [
-      'from-amber-700/50 to-orange-800/50',
-      'from-slate-700/50 to-indigo-800/50',
-      'from-cyan-700/50 to-purple-800/50',
-      'from-violet-700/50 to-fuchsia-800/50',
-      'from-rose-700/50 to-red-900/50',
-    ];
-
-    return {
-      id: difficulty,
-      label: meta.label,
-      icon: meta.icon,
-      gradient: gradients[index] ?? gradients[gradients.length - 1],
-      lockedBy: index === 0 ? '' : `${getDifficultyMeta(DIFFICULTY_ORDER[index - 1]).label} Level ${getMaxLevelForEra(DIFFICULTY_ORDER[index - 1])}`,
+  useEffect(() => {
+    let alive = true;
+    fetchLeaderboard(3)
+      .then((r) => alive && setBoard(r.entries ?? []))
+      .catch(() => {
+        /* leaderboard is decorative here — a failure must not block play */
+      });
+    return () => {
+      alive = false;
     };
-  }),
-];
+  }, []);
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function getProgressForEra(era: Difficulty, levelProgress: LevelProgress[]): { completed: number; total: number } {
-  const total = ERA_LEVEL_CONFIGS[era].length;
-  const completed = levelProgress.filter((lp) => lp.era === era && lp.completed).length;
-  return { completed, total };
-}
-
-function getLevelProgress(era: Difficulty, level: number, levelProgress: LevelProgress[]): LevelProgress | undefined {
-  return levelProgress.find((lp) => lp.era === era && lp.level === level);
-}
-
-function starDisplay(stars: number, max = 3): string {
-  return '⭐'.repeat(stars) + '☆'.repeat(Math.max(0, max - stars));
-}
-
-function medalIcon(medal: TimeMedal): string {
-  if (medal === 'gold')   return '🥇';
-  if (medal === 'silver') return '🥈';
-  if (medal === 'bronze') return '🥉';
-  return '—';
-}
-
-function chunkLevels(levels: EraLevel[], size: number): EraLevel[][] {
-  const chunks: EraLevel[][] = [];
-  for (let i = 0; i < levels.length; i += size) {
-    chunks.push(levels.slice(i, i + size));
-  }
-  return chunks;
-}
-
-// ── Sub-component: Level button ────────────────────────────────────────────────
-
-interface LevelButtonProps {
-  eraConfig: EraConfig;
-  levelConfig: EraLevel;
-  progress?: LevelProgress;
-  locked: boolean;
-  themeAccent: { selected: string; border: string; ring: string; text: string };
-  onSelect: () => void;
-  onChallenge: () => void;
-}
-
-function LevelButton({ eraConfig: _era, levelConfig, progress, locked, themeAccent, onSelect, onChallenge }: LevelButtonProps) {
-  const isComplete = progress?.completed ?? false;
-  const medal      = progress?.bestMedal ?? 'none';
-  const stars      = progress?.stars ?? 0;
-  const previewSec = levelConfig.previewDuration > 0 ? `${levelConfig.previewDuration / 1000}s preview` : 'No preview';
+  const resetIn = useCountdownToMidnight();
 
   return (
-    <motion.div
-      className={`
-        relative p-3 lg:p-4 rounded-xl border-2 text-left transition-all duration-200
-        ${locked
-          ? 'border-white/5 bg-white/3 opacity-50 cursor-not-allowed'
-          : isComplete
-          ? `border-green-500/30 bg-green-500/5 hover:border-green-400/50`
-          : `border-white/10 bg-white/5 hover:border-white/20`
-        }
-      `}
-      whileHover={locked ? {} : { scale: 1.03 }}
-      whileTap={locked ? {} : { scale: 0.97 }}
-    >
-      {/* Lock icon */}
-      {locked && (
-        <span className="absolute top-2 right-2 text-white/30 text-xs">🔒</span>
-      )}
-
-      {/* Completed checkmark */}
-      {!locked && isComplete && (
-        <span className="absolute top-2 right-2 text-green-400 text-xs font-bold">✓</span>
-      )}
-
-      <div
-        role="button"
-        tabIndex={locked ? -1 : 0}
-        onClick={locked ? undefined : onSelect}
-        onKeyDown={(event) => {
-          if (!locked && (event.key === 'Enter' || event.key === ' ')) {
-            event.preventDefault();
-            onSelect();
-          }
-        }}
-      >
-        {/* Level number + label */}
-        <div className="flex items-center gap-1.5 mb-1.5">
-        <span className={`text-xs lg:text-sm font-extrabold ${locked ? 'text-white/30' : themeAccent.text}`}>Lv.{levelConfig.level}</span>
-        <span className="text-xs lg:text-sm font-bold text-white truncate">{levelConfig.label}</span>
-        </div>
-
-        {/* Card count */}
-        <p className="text-[10px] lg:text-xs text-white/40 mb-1.5">{levelConfig.cardCount} cards</p>
-
-        {levelConfig.boss && (
-          <p className="text-[9px] lg:text-[10px] text-amber-300 mb-1">Boss Level · {levelConfig.relic} reward</p>
-        )}
-
-        {/* Medal + stars row */}
-        {!locked && (
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-sm lg:text-base leading-none">{medalIcon(medal)}</span>
-            <span className="text-[10px] lg:text-xs text-white/60">{isComplete ? starDisplay(stars) : '☆☆☆'}</span>
-          </div>
-        )}
-
-        {/* Preview + gold time */}
-        {!locked && (
-          <div className="space-y-0.5">
-            <p className="text-[9px] lg:text-[10px] text-white/30">{previewSec}</p>
-            <p className="text-[9px] lg:text-[10px] text-white/30">🥇 &lt; {levelConfig.timeLimitGold}s</p>
-            {levelConfig.mechanics?.[0] && (
-              <p className="text-[9px] lg:text-[10px] text-white/30 truncate">{levelConfig.mechanics[0]}</p>
-            )}
-          </div>
-        )}
-
-        {locked && (
-          <p className="text-[9px] lg:text-[10px] text-white/25">Complete Level {levelConfig.level - 1} first</p>
-        )}
-      </div>
-
-      {!locked && (
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={onSelect}
-            className="flex-1 rounded-lg bg-white/10 px-2 py-2 text-[11px] font-bold text-white/80 hover:bg-white/15"
-          >
-            Play
-          </button>
-          <button
-            onClick={onChallenge}
-            className="flex-1 rounded-lg bg-sky-500/15 px-2 py-2 text-[11px] font-bold text-sky-200 hover:bg-sky-500/25"
-          >
-            Duel
-          </button>
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
-// ── Main component ─────────────────────────────────────────────────────────────
-
-export default function LevelSelector({ onStart, onStartWeekly, onCreateChallenge }: LevelSelectorProps) {
-  const { theme, levelProgress, relicRewards } = useGameStore();
-  const [expandedEra, setExpandedEra] = useState<Difficulty | null>(null);
-
-  const themeAccent = {
-    museum: { text: 'text-amber-400', border: 'border-amber-500', ring: 'ring-amber-500/40', selected: 'border-amber-400 bg-amber-500/10', cta: 'from-amber-500 to-amber-700 hover:from-amber-400' },
-    nature: { text: 'text-green-400',  border: 'border-green-500',  ring: 'ring-green-500/40',  selected: 'border-green-400 bg-green-500/10',  cta: 'from-green-500 to-green-700 hover:from-green-400'  },
-    urban:  { text: 'text-[#00ff88]',  border: 'border-[#00ff88]',  ring: 'ring-[#00ff88]/30',  selected: 'border-[#00ff88] bg-[#00ff88]/5',   cta: 'from-[#00ff88] to-[#00e5ff] hover:from-[#00e5ff]' },
-  }[theme];
-
-  const dailyConfig    = getDailyChallengeConfig();
-  const dailyCompleted = isDailyChallengeCompleted();
-
-  const handleEraClick = (era: Difficulty) => {
-    const unlocked = isEraUnlocked(era, levelProgress);
-    if (!unlocked) return;
-    hapticImpact('light');
-    setExpandedEra((prev) => (prev === era ? null : era));
-  };
-
-  const handleLevelSelect = (era: Difficulty, level: number) => {
-    if (!isLevelUnlocked(era, level, levelProgress)) return;
-    hapticImpact('medium');
-    onStart(era, level);
-  };
-
-  const handleDailyPlay = () => {
-    hapticImpact('medium');
-    onStart(dailyConfig.difficulty, dailyConfig.level, true);
-  };
-
-  const handleWeeklyPlay = () => {
-    hapticImpact('medium');
-    onStartWeekly();
-  };
-
-  return (
-    <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-6"
-      >
-        <h2 className="text-3xl sm:text-4xl font-bold mb-1" style={{ color: 'var(--theme-text)' }}>
+    <div className="mu-rise">
+      {/* ── Heading ───────────────────────────────────────────────────────── */}
+      <header className="mb-5 sm:mb-7">
+        <h1
+          className="font-display text-4xl leading-none sm:text-5xl lg:text-6xl"
+          style={{ color: 'var(--mu-ivory)' }}
+        >
           Choose Your Level
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--theme-muted)' }}>
+        </h1>
+        <p className="mt-2 text-sm" style={{ color: 'var(--mu-muted)' }}>
           Select an era and level to begin
         </p>
-      </motion.div>
+      </header>
 
-      {/* Streak banner */}
-      <StreakBanner />
+      {/* ── Two columns on desktop, stacked on phones ─────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
+        {/* Left — challenges */}
+        <div className="flex flex-col gap-4">
+          <ChallengeCard
+            eyebrow="Daily Challenge"
+            eyebrowColor="var(--mu-gold)"
+            badge={dailyDone ? 'Completed' : '+500 pts'}
+            dayNumber={new Date().getDate()}
+            icon={getDifficultyMeta(daily.difficulty as Difficulty).icon}
+            title={getDifficultyMeta(daily.difficulty as Difficulty).label}
+            subtitle={`${getDifficultyMeta(daily.difficulty as Difficulty).label} · Level ${daily.level}`}
+            note="Same puzzle for all players today"
+            cta={dailyDone ? `Best ${(dailyState.score ?? 0).toLocaleString()} — replay` : 'Play Daily Seed →'}
+            primary
+            onPlay={() => {
+              hapticImpact('medium');
+              onStart(daily.difficulty as Difficulty, daily.level, true);
+            }}
+          />
 
-      {/* Daily Challenge */}
-      <DailyChallengeCard onPlay={handleDailyPlay} onPlayWeekly={handleWeeklyPlay} />
+          <ChallengeCard
+            eyebrow="Weekly Ladder"
+            eyebrowColor="var(--mu-info)"
+            badge={weekly.weekKey}
+            title={`${getDifficultyMeta(weekly.difficulty as Difficulty).label} · Level ${weekly.level}`}
+            note="One fixed seed all week. Share the result and challenge friends."
+            cta={weeklyDone ? 'Replay Weekly Ladder →' : 'Play Weekly Ladder →'}
+            accent="var(--mu-info)"
+            onPlay={() => {
+              hapticImpact('medium');
+              onStartWeekly();
+            }}
+            onShare={() => onCreateChallenge(weekly.difficulty as Difficulty, weekly.level)}
+          />
 
-      {relicRewards.length > 0 && (
-        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-white/40">Relic Vault</p>
-              <p className="text-sm font-bold text-white">Mastery rewards you have unlocked</p>
+          <p className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mu-faint)' }}>
+            <span>🕐</span> Resets in {resetIn}
+          </p>
+        </div>
+
+        {/* Right — eras */}
+        <div className="flex flex-col gap-3">
+          {DIFFICULTY_ORDER.map((era) => (
+            <EraCard
+              key={era}
+              era={era}
+              levelProgress={levelProgress}
+              expanded={openEra === era}
+              onToggle={() => setOpenEra(openEra === era ? null : era)}
+              onStart={onStart}
+              onCreateChallenge={onCreateChallenge}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Leaderboard strip ─────────────────────────────────────────────── */}
+      {board.length > 0 && (
+        <div className="mu-panel mt-4 flex flex-col gap-3 p-3 sm:mt-5 sm:flex-row sm:items-center sm:gap-4 sm:p-4">
+          <div className="flex items-center gap-2.5 sm:w-52 sm:shrink-0">
+            <span className="text-xl">🏅</span>
+            <div className="leading-tight">
+              <div className="text-sm font-bold" style={{ color: 'var(--mu-text)' }}>
+                Weekly Leaderboard
+              </div>
+              <div className="text-[0.68rem]" style={{ color: 'var(--mu-faint)' }}>
+                Top explorers this week
+              </div>
             </div>
-            <span className={`text-xs font-semibold ${themeAccent.text}`}>{relicRewards.length} relics</span>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {relicRewards.map((relic) => (
-              <div key={relic.id} className="px-3 py-2 rounded-xl border border-white/10 bg-black/10 text-xs text-white/75">
-                <span className="mr-1.5">{relic.icon}</span>
-                <span className="font-semibold text-white">{relic.name}</span>
+
+          <div className="mu-noscroll flex flex-1 gap-4 overflow-x-auto">
+            {board.slice(0, 3).map((row, i) => (
+              <div key={row.telegram_id ?? i} className="flex min-w-[8.5rem] items-center gap-2">
+                <span className="text-lg">{['🥇', '🥈', '🥉'][i]}</span>
+                <div className="min-w-0 leading-tight">
+                  <div className="truncate text-xs font-semibold" style={{ color: 'var(--mu-text)' }}>
+                    {row.username ? `@${row.username}` : row.first_name || 'Curator'}
+                  </div>
+                  <div className="text-[0.68rem]" style={{ color: 'var(--mu-gold)' }}>
+                    {(row.best_score ?? 0).toLocaleString()} pts
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Era cards */}
-      <div className="space-y-3">
-        {ERAS.map((era, i) => {
-          const unlocked = isEraUnlocked(era.id, levelProgress);
-          const progress = getProgressForEra(era.id, levelProgress);
-          const isExpanded = expandedEra === era.id;
-          const progressPct = (progress.completed / progress.total) * 100;
+/* ── Challenge card ──────────────────────────────────────────────────────── */
+
+function ChallengeCard({
+  eyebrow,
+  eyebrowColor,
+  badge,
+  dayNumber,
+  icon,
+  title,
+  subtitle,
+  note,
+  cta,
+  primary,
+  accent,
+  onPlay,
+  onShare,
+}: {
+  eyebrow: string;
+  eyebrowColor: string;
+  badge?: string;
+  dayNumber?: number;
+  icon?: string;
+  title: string;
+  subtitle?: string;
+  note: string;
+  cta: string;
+  primary?: boolean;
+  accent?: string;
+  onPlay: () => void;
+  onShare?: () => void;
+}) {
+  return (
+    <section className={primary ? 'mu-panel-gold p-3.5 sm:p-4' : 'mu-panel p-3.5 sm:p-4'}>
+      <div className="mb-2.5 flex items-start justify-between gap-2">
+        <span
+          className="text-[0.62rem] font-bold uppercase tracking-[0.18em]"
+          style={{ color: eyebrowColor }}
+        >
+          {eyebrow}
+        </span>
+        {badge && (
+          <span className={primary ? 'mu-chip mu-chip-gold' : 'mu-chip'}>{badge}</span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        {dayNumber !== undefined && (
+          <div
+            className="font-display grid h-14 w-14 shrink-0 place-items-center rounded-xl text-2xl font-bold"
+            style={{
+              color: 'var(--mu-ivory)',
+              background: 'linear-gradient(160deg, #1a2440, #0c1326)',
+              border: '1px solid var(--mu-line)',
+            }}
+          >
+            {dayNumber}
+          </div>
+        )}
+        {icon && (
+          <div
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-xl text-2xl"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--mu-line-soft)' }}
+          >
+            {icon}
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-base font-bold sm:text-lg" style={{ color: 'var(--mu-ivory)' }}>
+            {title}
+          </h3>
+          {subtitle && (
+            <p className="truncate text-xs" style={{ color: 'var(--mu-muted)' }}>
+              {subtitle}
+            </p>
+          )}
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--mu-faint)' }}>
+            {note}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={onPlay}
+          className={`${primary ? 'mu-btn-gold' : 'mu-btn-ghost'} flex-1 px-4 py-2.5 text-sm`}
+          style={!primary && accent ? { borderColor: `${accent}55`, color: accent } : undefined}
+        >
+          {cta}
+        </button>
+        {onShare && (
+          <button onClick={onShare} className="mu-btn-ghost px-3 py-2.5 text-sm" aria-label="Challenge a friend">
+            🔗
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ── Era card ────────────────────────────────────────────────────────────── */
+
+function EraCard({
+  era,
+  levelProgress,
+  expanded,
+  onToggle,
+  onStart,
+  onCreateChallenge,
+}: {
+  era: Difficulty;
+  levelProgress: LevelProgress[];
+  expanded: boolean;
+  onToggle: () => void;
+  onStart: (era: Difficulty, level: number) => void;
+  onCreateChallenge: (era: Difficulty, level: number) => void;
+}) {
+  const meta = getDifficultyMeta(era);
+  const skin = getEraSkin(era);
+  const unlocked = isEraUnlocked(era, levelProgress);
+  const total = ERA_LEVEL_CONFIGS[era].length;
+  const completed = levelProgress.filter((lp) => lp.era === era && lp.completed).length;
+  const pct = total ? (completed / total) * 100 : 0;
+
+  const index = DIFFICULTY_ORDER.indexOf(era);
+  const prevEra = index > 0 ? DIFFICULTY_ORDER[index - 1] : null;
+  const lockNote = prevEra
+    ? `Complete ${getDifficultyMeta(prevEra).label} Level ${getMaxLevelForEra(prevEra)} to unlock.`
+    : '';
+
+  const blurb: Record<number, string> = {
+    1: 'Step into the dawn of civilization and uncover timeless artifacts.',
+    2: 'Castles, crusades and the relics of a darker age.',
+    3: 'Machines, moonshots and the memory of a century in motion.',
+    4: 'Beyond the horizon — artifacts that have not been made yet.',
+    5: 'The sealed vault. Only the finest curators get this far.',
+  };
+
+  return (
+    <section
+      className={unlocked ? 'mu-panel overflow-hidden' : 'mu-panel overflow-hidden opacity-60'}
+      style={unlocked ? { borderColor: `${skin.accent}3a` } : undefined}
+    >
+      <button
+        onClick={() => unlocked && onToggle()}
+        disabled={!unlocked}
+        className="flex w-full items-start gap-3 p-3.5 text-left sm:p-4"
+        aria-expanded={expanded}
+      >
+        <div
+          className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-2xl"
+          style={{
+            background: unlocked
+              ? `linear-gradient(150deg, ${skin.backFrom}, ${skin.backTo})`
+              : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${unlocked ? `${skin.accent}44` : 'var(--mu-line-soft)'}`,
+          }}
+        >
+          {unlocked ? meta.icon : '🔒'}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate text-base font-bold sm:text-lg" style={{ color: 'var(--mu-ivory)' }}>
+              {meta.label}
+            </h3>
+            {unlocked ? (
+              <span className="shrink-0 text-xs" style={{ color: 'var(--mu-muted)' }}>
+                {completed}/{total} complete
+              </span>
+            ) : (
+              <span className="shrink-0 text-base">🔒</span>
+            )}
+          </div>
+
+          {unlocked && (
+            <div className="mu-track mt-2 h-1.5">
+              <div
+                className="mu-fill"
+                style={{
+                  width: `${pct}%`,
+                  background: `linear-gradient(90deg, ${skin.matchedTo}, ${skin.matchedFrom})`,
+                }}
+              />
+            </div>
+          )}
+
+          <p className="mt-2 text-xs" style={{ color: 'var(--mu-faint)' }}>
+            {unlocked ? blurb[era] : lockNote}
+          </p>
+        </div>
+      </button>
+
+      {/* Level strip */}
+      <AnimatePresence initial={false}>
+        {expanded && unlocked && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="border-t px-3.5 pb-3.5 pt-3 sm:px-4" style={{ borderColor: 'var(--mu-line-soft)' }}>
+              <LevelGrid
+                era={era}
+                levelProgress={levelProgress}
+                accent={skin.accent}
+                onStart={onStart}
+                onCreateChallenge={onCreateChallenge}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
+/* ── Level grid ──────────────────────────────────────────────────────────── */
+
+const PAGE = 25;
+
+function LevelGrid({
+  era,
+  levelProgress,
+  accent,
+  onStart,
+  onCreateChallenge,
+}: {
+  era: Difficulty;
+  levelProgress: LevelProgress[];
+  accent: string;
+  onStart: (era: Difficulty, level: number) => void;
+  onCreateChallenge: (era: Difficulty, level: number) => void;
+}) {
+  const max = getMaxLevelForEra(era);
+
+  // Open on the page holding the furthest unlocked level, not always page 1.
+  const furthest = useMemo(() => {
+    const done = levelProgress.filter((lp) => lp.era === era && lp.completed);
+    return done.length ? Math.min(max, Math.max(...done.map((d) => d.level)) + 1) : 1;
+  }, [era, levelProgress, max]);
+
+  const [page, setPage] = useState(Math.floor((furthest - 1) / PAGE));
+  const pages = Math.ceil(max / PAGE);
+  const start = page * PAGE + 1;
+  const end = Math.min(max, start + PAGE - 1);
+
+  return (
+    <>
+      {pages > 1 && (
+        <div className="mu-noscroll mb-3 flex gap-1.5 overflow-x-auto pb-1">
+          {Array.from({ length: pages }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => setPage(i)}
+              className="shrink-0 rounded-lg px-2.5 py-1 text-[0.68rem] font-semibold transition-colors"
+              style={
+                page === i
+                  ? { background: `${accent}22`, color: accent, border: `1px solid ${accent}55` }
+                  : { color: 'var(--mu-faint)', border: '1px solid var(--mu-line-soft)' }
+              }
+            >
+              {i * PAGE + 1}–{Math.min(max, (i + 1) * PAGE)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-6 md:grid-cols-8">
+        {Array.from({ length: end - start + 1 }, (_, i) => {
+          const level = start + i;
+          const unlocked = isLevelUnlocked(era, level, levelProgress);
+          const prog = levelProgress.find((lp) => lp.era === era && lp.level === level);
+          const done = !!prog?.completed;
 
           return (
-            <motion.div
-              key={era.id}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.07 }}
-              className={`
-                rounded-2xl border-2 overflow-hidden transition-all duration-200
-                ${isExpanded ? `${themeAccent.border} ring-2 ${themeAccent.ring}` : 'border-white/10'}
-                ${!unlocked ? 'opacity-60' : ''}
-              `}
+            <button
+              key={level}
+              disabled={!unlocked}
+              onClick={() => {
+                hapticImpact('light');
+                onStart(era, level);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (unlocked) onCreateChallenge(era, level);
+              }}
+              title={unlocked ? `Level ${level}` : 'Locked'}
+              className="relative aspect-square rounded-lg text-xs font-bold transition-transform active:scale-95 disabled:cursor-not-allowed"
+              style={{
+                color: done ? accent : unlocked ? 'var(--mu-text)' : 'var(--mu-faint)',
+                background: done ? `${accent}1c` : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${done ? `${accent}55` : 'var(--mu-line-soft)'}`,
+                opacity: unlocked ? 1 : 0.35,
+              }}
             >
-              {/* Era header */}
-              <button
-                className={`
-                  w-full p-4 flex items-center gap-4 text-left transition-all
-                  bg-gradient-to-r ${era.gradient}
-                  ${unlocked ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed'}
-                `}
-                onClick={() => handleEraClick(era.id)}
-              >
-                {/* Icon */}
-                <div className="text-3xl lg:text-4xl w-12 h-12 lg:w-14 lg:h-14 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                  {unlocked ? era.icon : '🔒'}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-bold text-white text-base">{era.label}</h3>
-                    {unlocked && (
-                      <span className="text-white/60 text-xs font-medium">
-                        {progress.completed}/{progress.total} complete
-                      </span>
-                    )}
-                  </div>
-
-                  {unlocked ? (
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full bg-gradient-to-r ${themeAccent.cta}`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progressPct}%` }}
-                        transition={{ duration: 0.6, ease: 'easeOut' }}
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-white/50 text-xs">
-                      Complete {era.lockedBy} to unlock
-                    </p>
-                  )}
-                </div>
-
-                {/* Expand chevron */}
-                {unlocked && (
-                  <motion.span
-                    className="text-white/50 text-sm flex-shrink-0"
-                    animate={{ rotate: isExpanded ? 180 : 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    ▼
-                  </motion.span>
-                )}
-              </button>
-
-              {/* Levels grid */}
-              <AnimatePresence>
-                {isExpanded && unlocked && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: 'easeInOut' }}
-                    className="overflow-hidden bg-[#1e293b]"
-                  >
-                    <div className="p-3 space-y-3">
-                      {chunkLevels(ERA_LEVEL_CONFIGS[era.id], 10).map((group, groupIndex) => (
-                        <div key={`${era.id}-${groupIndex}`} className="space-y-2">
-                          <div className="text-[10px] uppercase tracking-widest text-white/35 px-1">
-                            Levels {group[0].level}-{group[group.length - 1].level}
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                            {group.map((levelConfig) => {
-                              const lvlLocked = !isLevelUnlocked(era.id, levelConfig.level, levelProgress);
-                              return (
-                                <LevelButton
-                                  key={levelConfig.level}
-                                  eraConfig={era}
-                                  levelConfig={levelConfig}
-                                  progress={getLevelProgress(era.id, levelConfig.level, levelProgress)}
-                                  locked={lvlLocked}
-                                  themeAccent={themeAccent}
-                                  onSelect={() => handleLevelSelect(era.id, levelConfig.level)}
-                                  onChallenge={() => onCreateChallenge(era.id, levelConfig.level)}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
+              {unlocked ? level : '🔒'}
+              {prog?.bestMedal && prog.bestMedal !== 'none' && (
+                <span className="absolute -right-0.5 -top-0.5">
+                  <MedalBadge medal={prog.bestMedal as TimeMedal} />
+                </span>
+              )}
+            </button>
           );
         })}
       </div>
-    </div>
+
+      <p className="mt-2.5 text-[0.68rem]" style={{ color: 'var(--mu-faint)' }}>
+        Tap to play · long-press or right-click a level to challenge a friend
+      </p>
+    </>
   );
+}
+
+/* ── helpers ─────────────────────────────────────────────────────────────── */
+
+/** Time left until the daily seed rolls over at local midnight. */
+function useCountdownToMidnight(): string {
+  const [label, setLabel] = useState('--:--:--');
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      const s = Math.max(0, Math.floor((midnight.getTime() - now.getTime()) / 1000));
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setLabel(`${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return label;
 }

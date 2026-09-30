@@ -8,6 +8,7 @@ interface NameEntryProps {
 }
 
 const STORAGE_KEY = 'memorabilia_player_name';
+const MAX_NAME = 24;
 
 export default function NameEntry({ onContinue }: NameEntryProps) {
   const { telegramUser, setPlayerName } = useGameStore();
@@ -21,8 +22,7 @@ export default function NameEntry({ onContinue }: NameEntryProps) {
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    // auto-focus input after entrance animation
-    const t = setTimeout(() => inputRef.current?.focus(), 600);
+    const t = setTimeout(() => inputRef.current?.focus(), 700);
     return () => clearTimeout(t);
   }, []);
 
@@ -31,12 +31,12 @@ export default function NameEntry({ onContinue }: NameEntryProps) {
   const handleContinue = () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Enter your name to continue');
+      setError('Enter a display name to continue');
       hapticNotification('error');
       return;
     }
-    if (trimmed.length > 24) {
-      setError('Name must be 24 characters or less');
+    if (trimmed.length > MAX_NAME) {
+      setError(`Keep it to ${MAX_NAME} characters or fewer`);
       hapticNotification('error');
       return;
     }
@@ -46,170 +46,203 @@ export default function NameEntry({ onContinue }: NameEntryProps) {
     setSubmitted(true);
     localStorage.setItem(STORAGE_KEY, trimmed);
     setPlayerName(trimmed);
-
-    setTimeout(onContinue, 400);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleContinue();
+    setTimeout(onContinue, 420);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div
+      className="relative z-10 flex min-h-dvh flex-col items-center justify-center px-5"
+      style={{
+        paddingTop: 'calc(1.5rem + var(--safe-top))',
+        paddingBottom: 'calc(1.5rem + var(--safe-bottom))',
+      }}
+    >
+      {/* ── Crest ───────────────────────────────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -40 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="w-full max-w-sm"
+        initial={{ opacity: 0, y: -18, scale: 0.9 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        className="text-center"
       >
-        {/* Logo area */}
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
-          className="text-center mb-8"
+        <div
+          className="text-5xl sm:text-6xl"
+          style={{ filter: 'drop-shadow(0 8px 30px rgba(232,180,74,0.55))' }}
         >
-          <div className="text-7xl mb-3">🏛️</div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-museum-gold-400 to-museum-bronze-500 bg-clip-text text-transparent">
-            Memorabilia
-          </h1>
-          <p className="text-museum-stone-400 text-sm mt-1">The on-chain museum game</p>
-        </motion.div>
+          🏛️
+        </div>
 
-        {/* Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="bg-museum-stone-900/80 backdrop-blur-lg rounded-3xl p-8 border border-museum-bronze-400/30 shadow-2xl"
-        >
-          {/* Avatar */}
-          <div className="flex justify-center mb-6">
-            <motion.div
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ delay: 0.35, type: 'spring', stiffness: 180 }}
-              className="relative"
+        {/* Rule with a diamond either side */}
+        <div className="mt-3 flex items-center justify-center gap-2.5">
+          <Diamond />
+          <span
+            className="block h-px w-16 sm:w-24"
+            style={{ background: 'linear-gradient(90deg, transparent, var(--mu-gold-dim))' }}
+          />
+          <Diamond />
+          <span
+            className="block h-px w-16 sm:w-24"
+            style={{ background: 'linear-gradient(90deg, var(--mu-gold-dim), transparent)' }}
+          />
+          <Diamond />
+        </div>
+      </motion.div>
+
+      {/* ── Wordmark ────────────────────────────────────────────────────────── */}
+      <motion.h1
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        className="font-display mu-wordmark mt-3 text-center text-[3.25rem] leading-[0.95] sm:text-7xl lg:text-8xl"
+      >
+        Memorabilia
+      </motion.h1>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3, duration: 0.6 }}
+        className="mt-3 flex items-center gap-3"
+      >
+        <span className="block h-px w-5 sm:w-8" style={{ background: 'var(--mu-gold-dim)' }} />
+        <span className="mu-eyebrow text-center text-[0.6rem] sm:text-xs">
+          The On-Chain Museum Game
+        </span>
+        <span className="block h-px w-5 sm:w-8" style={{ background: 'var(--mu-gold-dim)' }} />
+      </motion.div>
+
+      {/* ── Card ────────────────────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 28 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.34, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        className="mu-panel mt-7 w-full max-w-sm px-5 pb-6 pt-8 sm:mt-9 sm:px-7"
+        style={{ boxShadow: '0 30px 80px -40px rgba(0,0,0,0.95)' }}
+      >
+        {/* Avatar ring */}
+        <div className="-mt-[3.25rem] mb-4 flex justify-center">
+          <div className="relative">
+            <div
+              className="absolute -inset-2 rounded-full opacity-70 blur-md"
+              style={{ background: 'radial-gradient(circle, rgba(232,180,74,0.5), transparent 70%)' }}
+            />
+            <div
+              className="font-display relative grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full text-3xl font-bold"
+              style={{
+                color: 'var(--mu-gold-bright)',
+                background: 'linear-gradient(165deg, #131c33, #080d1a)',
+                border: '2px solid var(--mu-gold)',
+                boxShadow: 'inset 0 0 22px rgba(232,180,74,0.22), 0 0 26px -6px rgba(232,180,74,0.6)',
+              }}
             >
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-museum-gold-500 to-museum-bronze-600 flex items-center justify-center text-3xl font-bold text-white shadow-lg border-4 border-museum-gold-400/50">
-                {avatarLetter}
-              </div>
-              {/* Pulse ring */}
-              <motion.div
-                className="absolute inset-0 rounded-full border-2 border-museum-gold-400"
-                animate={{ scale: [1, 1.4, 1], opacity: [0.8, 0, 0.8] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            </motion.div>
+              {avatarLetter}
+            </div>
           </div>
+        </div>
 
-          {/* Verified Telegram badge */}
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <span className="text-blue-400 text-xs font-semibold bg-blue-400/10 border border-blue-400/30 px-3 py-1 rounded-full">
-              ✓ Authenticated via Telegram
+        {telegramUser?.username && (
+          <div className="mb-3 flex justify-center">
+            <span className="mu-chip">
+              <span style={{ color: 'var(--mu-good)' }}>✓</span>
+              Authentic via Telegram
             </span>
           </div>
+        )}
 
-          <h2 className="text-xl font-bold text-center text-white mb-1">
-            Welcome, Curator!
-          </h2>
-          <p className="text-museum-stone-400 text-sm text-center mb-6">
-            Choose your display name for the game
-          </p>
-
-          {/* Input */}
-          <div className="mb-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={name}
-              onChange={(e) => { setName(e.target.value); setError(''); }}
-              onKeyDown={handleKeyDown}
-              maxLength={24}
-              placeholder="Enter your name..."
-              className={`
-                w-full px-4 py-3 rounded-xl text-white text-lg font-medium text-center
-                bg-museum-stone-800 border-2 transition-all duration-200 outline-none
-                placeholder:text-museum-stone-500
-                ${error
-                  ? 'border-red-500 focus:border-red-400'
-                  : 'border-museum-bronze-400/40 focus:border-museum-gold-400'
-                }
-              `}
-            />
-            <AnimatePresence>
-              {error && (
-                <motion.p
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="text-red-400 text-xs text-center mt-2"
-                >
-                  {error}
-                </motion.p>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Character count */}
-          <p className="text-museum-stone-600 text-xs text-right mb-5">
-            {name.length}/24
-          </p>
-
-          {/* Continue button */}
-          <motion.button
-            onClick={handleContinue}
-            disabled={submitted}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className={`
-              w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
-              ${submitted
-                ? 'bg-museum-stone-700 text-museum-stone-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-museum-gold-500 to-museum-bronze-600 text-white shadow-lg hover:from-museum-gold-600 hover:to-museum-bronze-700'
-              }
-            `}
-          >
-            {submitted ? '✓ Entering Museum...' : 'Enter Museum →'}
-          </motion.button>
-
-          {/* Telegram identity — always shown, not changeable */}
-          <div className="mt-4 pt-4 border-t border-museum-stone-700/50">
-            <div className="flex items-center justify-center gap-2 text-xs text-museum-stone-500">
-              <span>🔒</span>
-              <span>
-                Telegram ID: <span className="text-museum-stone-400 font-mono">{telegramUser?.id}</span>
-                {telegramUser?.username && (
-                  <> · <span className="text-museum-stone-400">@{telegramUser.username}</span></>
-                )}
-              </span>
-            </div>
-            <p className="text-museum-stone-600 text-xs text-center mt-1">
-              Your score is linked to your Telegram account
-            </p>
-          </div>
-        </motion.div>
-
-        {/* Stats teaser */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="flex justify-center gap-6 mt-6 text-center"
+        <h2
+          className="text-center text-lg font-bold sm:text-xl"
+          style={{ color: 'var(--mu-ivory)' }}
         >
-          {[
-            { icon: '🏆', label: 'Leaderboard' },
-            { icon: '🎭', label: 'Eras' },
-            { icon: '🏛️', label: 'NFT Rewards' },
-          ].map(({ icon, label }) => (
-            <div key={label} className="text-museum-stone-400">
-              <div className="text-2xl">{icon}</div>
-              <div className="text-xs mt-1">{label}</div>
-            </div>
-          ))}
-        </motion.div>
+          Welcome, Curator!
+        </h2>
+        <p className="mt-1 text-center text-[0.8rem]" style={{ color: 'var(--mu-muted)' }}>
+          Choose your display name for the game
+        </p>
+
+        <div className="mt-5">
+          <input
+            ref={inputRef}
+            type="text"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (error) setError('');
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && handleContinue()}
+            maxLength={MAX_NAME + 6}
+            placeholder="Your name"
+            aria-label="Display name"
+            aria-invalid={!!error}
+            className="mu-field px-4 py-3 text-base"
+            style={error ? { borderColor: 'var(--mu-bad)' } : undefined}
+          />
+
+          <AnimatePresence mode="wait">
+            {error ? (
+              <motion.p
+                key="err"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-2 text-center text-xs font-medium"
+                style={{ color: 'var(--mu-bad)' }}
+              >
+                {error}
+              </motion.p>
+            ) : (
+              <motion.p
+                key="count"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="mt-2 text-center text-[0.68rem]"
+                style={{ color: 'var(--mu-faint)' }}
+              >
+                {name.trim().length}/{MAX_NAME}
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <button
+          onClick={handleContinue}
+          disabled={submitted}
+          className="mu-btn-gold mt-3 w-full px-5 py-3.5 text-[0.95rem]"
+        >
+          {submitted ? (
+            <>Opening the doors…</>
+          ) : (
+            <>
+              <span>🏛️</span>
+              <span>Enter Museum</span>
+              <motion.span
+                animate={{ x: [0, 4, 0] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                →
+              </motion.span>
+            </>
+          )}
+        </button>
       </motion.div>
+
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.7 }}
+        className="mt-6 text-center text-[0.68rem]"
+        style={{ color: 'var(--mu-faint)' }}
+      >
+        Five eras · 350 levels · verified scores
+      </motion.p>
     </div>
+  );
+}
+
+function Diamond() {
+  return (
+    <span
+      className="block h-1 w-1 rotate-45"
+      style={{ background: 'var(--mu-gold)', boxShadow: '0 0 6px var(--mu-gold)' }}
+    />
   );
 }

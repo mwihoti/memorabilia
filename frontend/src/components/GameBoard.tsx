@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getTimeMedal } from '../types';
 import { getPlayerSettings, getPreviewMultiplier } from '../store/settings';
+import { getCardSkin } from '../theme/cardSkins';
 import Card from './Card';
 import ComboDisplay from './ComboDisplay';
 
@@ -12,7 +13,6 @@ export default function GameBoard() {
     flippedCards,
     flipCard,
     isChecking,
-    theme,
     combo,
     mismatches,
     currentEra,
@@ -43,40 +43,51 @@ export default function GameBoard() {
   const [showStreak, setShowStreak] = useState(false);
   const prevMatchedCount = useRef(0);
 
-  // Preview countdown — use level config preview duration if available
+  // Tailwind's `sm` breakpoint — the board goes 4-wide below it, 6-wide above.
+  const isWide = useMediaQuery('(min-width: 640px)');
+
+  // The board's era skin — this is what makes level 1 Ancient clay and level 300
+  // Mythic obsidian without touching any other component.
+  const skin = getCardSkin(currentEra, currentLevel);
+
+  // ── Preview countdown ────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentGame) return;
     setShowPreview(true);
     prevMatchedCount.current = 0;
 
-    // Determine preview duration from level config if in level mode
     let previewDurationMs = 3000;
     const settings = getPlayerSettings();
     if (currentEra !== null) {
       const levelConfig = ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1];
       if (levelConfig) {
-        previewDurationMs = Math.round(levelConfig.previewDuration * getPreviewMultiplier(settings.previewLength));
+        previewDurationMs = Math.round(
+          levelConfig.previewDuration * getPreviewMultiplier(settings.previewLength),
+        );
       }
     }
 
-    const previewSeconds = Math.ceil(previewDurationMs / 1000) || 0;
-    setPreviewCountdown(previewSeconds);
+    setPreviewCountdown(Math.ceil(previewDurationMs / 1000) || 0);
 
     if (previewDurationMs === 0) {
-      // No preview for highest levels
       setShowPreview(false);
       return;
     }
 
     const tick = setInterval(() => {
-      setPreviewCountdown(c => {
-        if (c <= 1) { clearInterval(tick); return 0; }
+      setPreviewCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(tick);
+          return 0;
+        }
         return c - 1;
       });
     }, 1000);
-
     const hide = setTimeout(() => setShowPreview(false), previewDurationMs);
-    return () => { clearInterval(tick); clearTimeout(hide); };
+    return () => {
+      clearInterval(tick);
+      clearTimeout(hide);
+    };
   }, [currentGame?.game_id]);
 
   useEffect(() => {
@@ -91,7 +102,7 @@ export default function GameBoard() {
     return () => clearInterval(id);
   }, [currentGame?.game_id, showPreview, currentEra, triggerPulseScan]);
 
-  // Timer
+  // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentGame || currentGame.status !== 0 || showPreview) return;
     const interval = setInterval(() => {
@@ -100,11 +111,11 @@ export default function GameBoard() {
     return () => clearInterval(interval);
   }, [currentGame, showPreview]);
 
-  // Streak tracking
+  // ── Streak tracking ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentGame) return;
     if (currentGame.matched_count > prevMatchedCount.current) {
-      setStreakCount(s => s + 1);
+      setStreakCount((s) => s + 1);
       if (currentGame.matched_count - prevMatchedCount.current === 1) {
         setShowStreak(true);
         setTimeout(() => setShowStreak(false), 1500);
@@ -113,19 +124,30 @@ export default function GameBoard() {
     prevMatchedCount.current = currentGame.matched_count;
   }, [currentGame?.matched_count]);
 
-  // Track mismatches
   const prevChecking = useRef(false);
   const matchedAtCheckStart = useRef(0);
+  const pairUnderTest = useRef<number[]>([]);
   useEffect(() => {
     if (!currentGame) return;
+
     if (isChecking && !prevChecking.current) {
       matchedAtCheckStart.current = currentGame.matched_count;
+      // Remember which two cards are being compared — once the check resolves
+      // they are gone from flippedCards, so capture them now.
+      pairUnderTest.current = [...flippedCards];
     }
+
     if (!isChecking && prevChecking.current && flippedCards.length === 0) {
       if (currentGame.matched_count === matchedAtCheckStart.current) {
         setStreakCount(0);
+        // A miss — shake the pair that failed.
+        setMismatchedIndices(pairUnderTest.current);
+        const t = setTimeout(() => setMismatchedIndices([]), 450);
+        prevChecking.current = isChecking;
+        return () => clearTimeout(t);
       }
     }
+
     prevChecking.current = isChecking;
   }, [isChecking]);
 
@@ -133,155 +155,104 @@ export default function GameBoard() {
 
   const config = GAME_CONFIGS[currentGame.difficulty];
   const progress = (currentGame.matched_count / currentGame.total_pairs) * 100;
+  const levelConfig =
+    currentEra !== null ? (ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1] ?? null) : null;
 
-  // Resolve level config for time-limit ring and level labels
-  const levelConfig = currentEra !== null
-    ? ERA_LEVEL_CONFIGS[currentEra]?.[currentLevel - 1] ?? null
-    : null;
-
-  // Time medal calculation (only when in level mode)
   const timeMedal = levelConfig ? getTimeMedal(elapsedTime, levelConfig) : null;
-
-  // Countdown ring values — based on gold time limit
   const goldLimit = levelConfig?.timeLimitGold ?? 0;
-  const ringProgress = goldLimit > 0
-    ? Math.max(0, Math.min(1, 1 - elapsedTime / goldLimit))
-    : null;
+  const ringProgress =
+    goldLimit > 0 ? Math.max(0, Math.min(1, 1 - elapsedTime / goldLimit)) : null;
 
-  // Ring color: green >50%, yellow 25-50%, red <25%
   const ringColor =
-    ringProgress === null ? 'var(--theme-accent)'
-    : ringProgress > 0.5  ? '#22c55e'
-    : ringProgress > 0.25 ? '#eab308'
-    : '#ef4444';
+    ringProgress === null ? skin.accent
+    : ringProgress > 0.5 ? 'var(--mu-good)'
+    : ringProgress > 0.25 ? 'var(--mu-warn)'
+    : 'var(--mu-bad)';
 
-  // Medal emoji
   const medalEmoji =
-    timeMedal === 'gold'   ? '🥇'
+    timeMedal === 'gold' ? '🥇'
     : timeMedal === 'silver' ? '🥈'
     : timeMedal === 'bronze' ? '🥉'
-    : timeMedal === 'none'   ? '💨'
+    : timeMedal === 'none' ? '💨'
     : null;
 
-  // SVG ring dimensions
   const RING_R = 18;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
-  // Dynamic grid — always even columns (2, 4, 6) per requirement
-  const actualCardCount = currentGame.cards.length;
-  const gridClass =
-    actualCardCount <= 16 ? 'grid-cols-4' :
-    actualCardCount <= 24 ? 'grid-cols-4 md:grid-cols-6' :
-    'grid-cols-4 md:grid-cols-6'; // 30 cards: 4-col mobile, 6-col desktop
+  // Even columns at every breakpoint so pairs stay visually adjacent.
+  // `columns` must track what the grid actually renders — the pulse-scan row
+  // highlight reads it, and assuming 6 on a 4-wide phone lights the wrong row.
+  const cardCount = currentGame.cards.length;
+  const columns = cardCount <= 16 ? 4 : isWide ? 6 : 4;
+  const gridClass = cardCount <= 16 ? 'grid-cols-4' : 'grid-cols-4 sm:grid-cols-6';
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
   const difficultyMeta = getDifficultyMeta(currentGame.difficulty);
-  const difficultyLabel = `${difficultyMeta.icon} ${difficultyMeta.label}`;
 
-  // Level label (e.g. "Scholar") from config
-  const levelLabel = levelConfig?.label ?? null;
-
-  // Preview banner label
-  const previewLabel = levelConfig
-    ? `Level ${currentLevel} · ${levelConfig.label} · ${(levelConfig.previewDuration / 1000).toFixed(1)}s preview`
-    : null;
-  const mechanicLabels = levelConfig?.mechanics ?? [];
-
-  const accentColor = theme === 'museum' ? 'text-amber-400' : theme === 'nature' ? 'text-green-400' : 'text-[#00ff88]';
-  const streakBg = theme === 'museum' ? 'bg-amber-500 text-slate-900' : theme === 'nature' ? 'bg-green-500 text-slate-900' : 'bg-[#00ff88] text-black';
-  const progressBar = theme === 'museum' ? 'from-amber-500 to-amber-700' : theme === 'nature' ? 'from-green-500 to-green-700' : 'from-[#00ff88] to-[#00e5ff]';
+  const powerUps = [
+    { label: 'Hint', icon: '💡', charges: hintCharges, onClick: useHint, disabled: hintCharges <= 0 },
+    { label: 'Freeze', icon: '❄️', charges: freezeCharges, onClick: useFreeze, disabled: freezeCharges <= 0 },
+    { label: 'Trap', icon: '🌀', charges: trapCharges, onClick: useTrap, disabled: trapCharges <= 0 },
+    {
+      label: pendingMultiplier > 1 ? 'Armed' : 'Boost',
+      icon: '⚡',
+      charges: multiplierCharges,
+      onClick: armMultiplier,
+      disabled: multiplierCharges <= 0 || pendingMultiplier > 1,
+    },
+  ];
 
   return (
-    <div className="max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto px-0.5 sm:px-1">
-
-      {/* Era label */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-2 sm:mb-3"
-      >
-        <span
-          className={`text-[10px] sm:text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full border ${accentColor}`}
-          style={{ borderColor: 'var(--theme-border)', backgroundColor: 'rgba(255,255,255,0.05)' }}
+    <div className="mx-auto w-full max-w-4xl">
+      {/* ── Era seed chip ─────────────────────────────────────────────────── */}
+      <div className="mb-3 flex justify-center">
+        <motion.span
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mu-chip mu-chip-gold px-3 py-1"
+          style={{ borderColor: `${skin.accent}66`, color: skin.accent }}
         >
-          {difficultyLabel}
-          {levelLabel && <span className="ml-1.5 opacity-60">· {levelLabel}</span>}
-        </span>
-      </motion.div>
+          <span>✦</span>
+          {difficultyMeta.label} · Level {currentLevel}
+          {levelConfig?.label && <span className="opacity-60">· {levelConfig.label}</span>}
+        </motion.span>
+      </div>
 
-      {/* Preview banner */}
-      <AnimatePresence>
-        {showPreview && (
-          <motion.div
-            initial={{ opacity: 0, scaleY: 0 }}
-            animate={{ opacity: 1, scaleY: 1 }}
-            exit={{ opacity: 0, scaleY: 0 }}
-            className="mb-3 rounded-xl p-3 text-center overflow-hidden"
-            style={{ background: 'linear-gradient(to right, var(--theme-accent2), var(--theme-accent))' }}
-          >
-            <div className="text-sm sm:text-base font-bold text-white">👀 Memorize the Artifacts!</div>
-            <div className="text-xs text-white/70">
-              {previewLabel
-                ? previewLabel
-                : <>Game starts in <span className="font-bold text-white">{previewCountdown}</span>…</>}
-            </div>
-            {previewLabel && (
-              <div className="text-xs text-white/60 mt-0.5">
-                Starts in <span className="font-bold text-white">{previewCountdown}</span>…
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ── Title ─────────────────────────────────────────────────────────── */}
+      <h1
+        className="font-display mu-wordmark mb-4 text-center text-3xl leading-tight sm:text-4xl lg:text-5xl"
+      >
+        {showPreview ? 'Memorize the Artifacts!' : 'Find the Pairs'}
+      </h1>
 
-      {mechanicLabels.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5 justify-center">
-          {mechanicLabels.map((mechanic) => (
-            <span
-              key={mechanic}
-              className="px-2.5 py-1 rounded-full text-[10px] sm:text-xs border text-white/75"
-              style={{ borderColor: 'var(--theme-border)', backgroundColor: 'rgba(255,255,255,0.05)' }}
-            >
-              {mechanic}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Stats bar */}
-      <div className="mb-3 grid grid-cols-4 gap-1.5 sm:gap-2">
-        {/* Score */}
-        <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
-          <motion.div
+      {/* ── Stat bar ──────────────────────────────────────────────────────── */}
+      <div className="mu-panel mb-3 grid grid-cols-4 gap-1 p-2 sm:gap-2 sm:p-3">
+        <Stat label="Score" accent={skin.accent}>
+          <motion.span
             key={currentGame.score}
             initial={{ scale: 1.3 }}
             animate={{ scale: 1 }}
             transition={{ duration: 0.25 }}
-            className={`text-lg sm:text-2xl font-bold ${accentColor}`}
+            className="block"
           >
             {currentGame.score.toLocaleString()}
-          </motion.div>
-          <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Score</div>
-          {/* Streak multiplier badge */}
+          </motion.span>
           {streak.multiplierBonus > 0 && (
-            <div className="mt-0.5 text-[9px] font-semibold text-orange-400">
-              🔥 +{Math.round(streak.multiplierBonus * 100)}% streak
-            </div>
+            <span className="mt-0.5 block text-[0.6rem] font-semibold text-orange-400">
+              🔥 +{Math.round(streak.multiplierBonus * 100)}%
+            </span>
           )}
-        </div>
+        </Stat>
 
-        {/* Time — with countdown ring when in level mode */}
-        <div className="rounded-xl p-2 sm:p-3 text-center border relative" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
+        <Stat label="Time" accent={skin.accent}>
           {ringProgress !== null ? (
-            /* Countdown ring */
-            <div className="flex items-center justify-center gap-1">
-              <svg width="42" height="42" viewBox="0 0 42 42" className="flex-shrink-0">
-                {/* Track */}
+            <span className="flex items-center justify-center gap-1">
+              <svg width="44" height="44" viewBox="0 0 42 42" className="shrink-0">
                 <circle cx="21" cy="21" r={RING_R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
-                {/* Progress */}
                 <circle
-                  cx="21" cy="21" r={RING_R}
+                  cx="21"
+                  cy="21"
+                  r={RING_R}
                   fill="none"
                   stroke={ringColor}
                   strokeWidth="3"
@@ -291,99 +262,118 @@ export default function GameBoard() {
                   transform="rotate(-90 21 21)"
                   style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s ease' }}
                 />
-                {/* Timer text inside ring */}
-                <text x="21" y="25" textAnchor="middle" fontSize="8" fill="white" fontFamily="monospace" fontWeight="bold">
+                <text
+                  x="21"
+                  y="25"
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="var(--mu-text)"
+                  fontFamily="ui-monospace, monospace"
+                  fontWeight="bold"
+                >
                   {formatTime(elapsedTime)}
                 </text>
               </svg>
               {medalEmoji && <span className="text-base">{medalEmoji}</span>}
-            </div>
+            </span>
           ) : (
-            <div className={`text-lg sm:text-2xl font-bold font-mono ${elapsedTime > 60 ? 'text-orange-400' : 'text-white/90'}`}>
-              {formatTime(elapsedTime)}
-            </div>
+            <span className="font-mono">{formatTime(elapsedTime)}</span>
           )}
-          <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Time</div>
-        </div>
+        </Stat>
 
-        {/* Pairs */}
-        <div className="rounded-xl p-2 sm:p-3 text-center border" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'var(--theme-border)' }}>
-          <div className={`text-lg sm:text-2xl font-bold ${accentColor}`}>
-            {currentGame.matched_count}
-            <span className="text-sm sm:text-base text-white/40">/{currentGame.total_pairs}</span>
-          </div>
-          <div className="text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>Pairs</div>
-        </div>
+        <Stat label="Pairs" accent={skin.accent}>
+          {currentGame.matched_count}
+          <span className="text-sm opacity-40">/{currentGame.total_pairs}</span>
+        </Stat>
 
-        {/* Mistakes */}
-        <div
-          className="rounded-xl p-2 sm:p-3 text-center border"
-          style={{
-            backgroundColor: mismatches > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.06)',
-            borderColor: mismatches > 0 ? 'rgba(239,68,68,0.35)' : 'var(--theme-border)',
-          }}
-        >
-          <div className={`text-lg sm:text-2xl font-bold ${mismatches > 0 ? 'text-red-400' : 'text-white/60'}`}>
-            {mismatches}
-          </div>
-          <div className="text-[10px] sm:text-xs flex items-center justify-center gap-0.5" style={{ color: 'var(--theme-muted)' }}>
-            <span>❌</span><span>Mistakes</span>
-          </div>
-        </div>
+        <Stat label="Mistakes" accent={mismatches > 0 ? 'var(--mu-bad)' : 'var(--mu-muted)'}>
+          {mismatches}
+        </Stat>
       </div>
 
-      {/* Combo display */}
-      <ComboDisplay combo={combo} />
-
-      {/* Action bar */}
-      <div className="mb-3 grid grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-2">
-        {[
-          { label: 'Hint', icon: '💡', charges: hintCharges, onClick: useHint, disabled: hintCharges <= 0 },
-          { label: 'Freeze', icon: '❄️', charges: freezeCharges, onClick: useFreeze, disabled: freezeCharges <= 0 },
-          { label: 'Trap', icon: '🌀', charges: trapCharges, onClick: useTrap, disabled: trapCharges <= 0 },
-          { label: pendingMultiplier > 1 ? 'Armed x2' : 'Boost', icon: '⚡', charges: multiplierCharges, onClick: armMultiplier, disabled: multiplierCharges <= 0 || pendingMultiplier > 1 },
-        ].map((action) => (
+      {/* ── Power-ups ─────────────────────────────────────────────────────── */}
+      <div className="mb-3 grid grid-cols-4 gap-1.5 sm:gap-2">
+        {powerUps.map((p) => (
           <button
-            key={action.label}
-            onClick={action.onClick}
-            disabled={action.disabled || showPreview || isChecking}
-            className="rounded-xl border px-3 py-2 text-left disabled:opacity-40"
-            style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'var(--theme-border)' }}
+            key={p.label}
+            onClick={p.onClick}
+            disabled={p.disabled || showPreview || isChecking}
+            className="mu-panel relative flex flex-col items-center gap-0.5 px-1 py-2 transition-all disabled:opacity-35 sm:py-2.5"
+            style={!p.disabled ? { borderColor: `${skin.accent}44` } : undefined}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-sm sm:text-base">{action.icon}</span>
-              <span className={`text-[10px] sm:text-xs font-semibold ${accentColor}`}>x{action.charges}</span>
-            </div>
-            <div className="text-xs sm:text-sm font-bold text-white/85">{action.label}</div>
+            <span
+              className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[0.6rem] font-bold"
+              style={{
+                color: '#2a1e06',
+                background: 'linear-gradient(160deg, var(--mu-gold-bright), var(--mu-gold-deep))',
+              }}
+            >
+              x{p.charges}
+            </span>
+            <span className="text-base sm:text-lg">{p.icon}</span>
+            <span className="text-[0.66rem] font-semibold sm:text-xs" style={{ color: 'var(--mu-text)' }}>
+              {p.label}
+            </span>
           </button>
         ))}
       </div>
 
+      {/* ── Preview / mechanics banner ────────────────────────────────────── */}
+      <AnimatePresence>
+        {showPreview && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-3 rounded-xl px-4 py-2.5 text-center"
+            style={{
+              background: `linear-gradient(100deg, ${skin.accent}22, transparent)`,
+              border: `1px solid ${skin.accent}44`,
+            }}
+          >
+            <div className="text-sm font-bold" style={{ color: 'var(--mu-ivory)' }}>
+              👀 Study the board — {previewCountdown}s
+            </div>
+            {levelConfig?.mechanics?.length ? (
+              <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
+                {levelConfig.mechanics.map((m) => (
+                  <span key={m} className="mu-chip text-[0.6rem]">
+                    {m}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ComboDisplay combo={combo} />
+
       {(shieldCharges > 0 || pendingMultiplier > 1) && (
-        <div className="mb-3 flex flex-wrap justify-center gap-2 text-[10px] sm:text-xs">
+        <div className="mb-3 flex flex-wrap justify-center gap-2">
           {shieldCharges > 0 && (
-            <span className="px-2.5 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300">
+            <span className="mu-chip" style={{ color: 'var(--mu-info)' }}>
               🛡️ {shieldCharges} shield{shieldCharges === 1 ? '' : 's'} ready
             </span>
           )}
           {pendingMultiplier > 1 && (
-            <span className="px-2.5 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-300">
+            <span className="mu-chip" style={{ color: '#e879f9' }}>
               ⚡ next match x{pendingMultiplier}
             </span>
           )}
         </div>
       )}
 
-      {/* Progress bar */}
-      <div className="mb-3 rounded-full h-1.5 sm:h-2 overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
+      {/* ── Progress ──────────────────────────────────────────────────────── */}
+      <div className="mu-track mb-3 h-1.5">
         <motion.div
-          className={`h-full bg-gradient-to-r ${progressBar}`}
+          className="mu-fill"
+          style={{ background: `linear-gradient(90deg, ${skin.matchedTo}, ${skin.matchedFrom})` }}
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
         />
       </div>
 
-      {/* Streak popup */}
       <AnimatePresence>
         {showStreak && streakCount >= 2 && (
           <motion.div
@@ -392,35 +382,34 @@ export default function GameBoard() {
             exit={{ opacity: 0, scale: 0.8, y: -10 }}
             className="mb-2 text-center"
           >
-            <span className={`inline-block font-bold text-xs sm:text-sm px-4 py-1 rounded-full shadow-lg ${streakBg}`}>
+            <span
+              className="inline-block rounded-full px-4 py-1 text-xs font-bold shadow-lg"
+              style={{ background: skin.accent, color: '#0a1020' }}
+            >
               🔥 {streakCount} in a row!
             </span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Game Board */}
-      <div className={`grid ${gridClass} gap-1.5 sm:gap-2`}>
+      {/* ── Board ─────────────────────────────────────────────────────────── */}
+      <div className={`grid ${gridClass} gap-1.5 sm:gap-2.5`}>
         {currentGame.cards.map((card, index) => {
           const isMatched = card.is_matched;
-          const columns = actualCardCount <= 16 ? 4 : 6;
           const row = Math.floor(index / columns);
           const pulseReveal = pulseScanRow !== null && row === pulseScanRow;
           const isFlipped = showPreview || flippedCards.includes(index) || isMatched || pulseReveal;
-          const emoji = currentGame.emojis?.[card.value] ?? '❓';
-          const isMismatched = mismatchedIndices.includes(index);
-          const isObscured = hiddenCardIndices.includes(index) && !isFlipped;
-          const isHinted = hintPairIndices.includes(index);
 
           return (
             <Card
               key={card.id}
-              emoji={emoji}
+              emoji={currentGame.emojis?.[card.value] ?? '❓'}
+              skin={skin}
               isFlipped={isFlipped}
               isMatched={isMatched}
-              isMismatched={isMismatched}
-              isHinted={isHinted}
-              isObscured={isObscured}
+              isMismatched={mismatchedIndices.includes(index)}
+              isHinted={hintPairIndices.includes(index)}
+              isObscured={hiddenCardIndices.includes(index) && !isFlipped}
               index={index}
               onClick={() => !isChecking && !showPreview && flipCard(index)}
               disabled={isChecking || isMatched || showPreview}
@@ -429,14 +418,14 @@ export default function GameBoard() {
         })}
       </div>
 
-      {/* Checking indicator */}
       <AnimatePresence>
         {isChecking && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={`mt-3 text-center text-xs sm:text-sm font-medium ${accentColor}`}
+            className="mt-3 text-center text-xs font-medium sm:text-sm"
+            style={{ color: skin.accent }}
           >
             <motion.span
               animate={{ opacity: [1, 0.4, 1] }}
@@ -448,10 +437,56 @@ export default function GameBoard() {
         )}
       </AnimatePresence>
 
-      {/* Moves counter */}
-      <div className="mt-2 text-center text-[10px] sm:text-xs" style={{ color: 'var(--theme-muted)' }}>
-        {currentGame.moves} moves · optimal {config.optimalMoves}
+      <div className="mt-3 flex items-center justify-center gap-1.5 text-[0.7rem]" style={{ color: 'var(--mu-faint)' }}>
+        <span>ⓘ</span>
+        <span>
+          {currentGame.moves} moves · optimal {config.optimalMoves} · find all pairs to complete the
+          round
+        </span>
       </div>
     </div>
   );
+}
+
+/* ── pieces ──────────────────────────────────────────────────────────────── */
+
+function Stat({
+  label,
+  accent,
+  children,
+}: {
+  label: string;
+  accent: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg px-1 py-1.5 text-center">
+      <div
+        className="text-lg font-bold leading-tight sm:text-2xl"
+        style={{ color: accent }}
+      >
+        {children}
+      </div>
+      <div className="mt-0.5 text-[0.62rem] sm:text-xs" style={{ color: 'var(--mu-faint)' }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+/** Subscribes to a media query and re-renders when it flips. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
+    setMatches(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
+
+  return matches;
 }

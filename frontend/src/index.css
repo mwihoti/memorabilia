@@ -1,15 +1,17 @@
+@import './styles/museum.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ── Fonts ──────────────────────────────────────────────────────────────── */
 :root {
-  font-family: 'Inter', 'Georgia', 'Times New Roman', serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
   color: rgba(255,255,255,0.87);
-  background-color: #0f172a;
+  background-color: #0a1020;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -41,17 +43,16 @@ body {
 
 /* Museum theme (default) */
 .theme-museum {
-  --theme-bg:        #0f172a;
-  --theme-surface:   #1e293b;
-  --theme-border:    rgba(217,119,6,0.3);
-  --theme-accent:    #f59e0b;
-  --theme-accent2:   #b45309;
-  --theme-text:      #f1f5f9;
-  --theme-muted:     #94a3b8;
-  --card-back-from:  #92400e;
-  --card-back-to:    #ca8a04;
-  --card-back-icon:  "🏛️";
-  --header-font:     'Inter', serif;
+  --theme-bg:        #0a1020;
+  --theme-surface:   #111a2e;
+  --theme-border:    rgba(232,180,74,0.22);
+  --theme-accent:    #e8b44a;
+  --theme-accent2:   #b8862c;
+  --theme-text:      #e6ecf7;
+  --theme-muted:     #8d9bb5;
+  --card-back-from:  #16203a;
+  --card-back-to:    #0e1526;
+  --header-font:     'Cormorant Garamond', Georgia, serif;
 }
 
 /* Nature theme */

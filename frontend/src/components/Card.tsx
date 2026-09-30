@@ -1,9 +1,12 @@
 import { motion } from 'framer-motion';
 import { hapticImpact } from '../telegram/telegram';
-import { useGameStore } from '../store/gameStore';
+import CardPattern from './CardPattern';
+import type { CardSkin } from '../theme/cardSkins';
 
 interface CardProps {
   emoji: string;
+  /** Era skin for this board — supplied by GameBoard, never read from theme. */
+  skin: CardSkin;
   isFlipped: boolean;
   isMatched: boolean;
   onClick: () => void;
@@ -16,6 +19,7 @@ interface CardProps {
 
 export default function Card({
   emoji,
+  skin,
   isFlipped,
   isMatched,
   onClick,
@@ -25,210 +29,158 @@ export default function Card({
   isHinted = false,
   isObscured = false,
 }: CardProps) {
-  const { theme } = useGameStore();
-
   const handleClick = () => {
     if (disabled || isMatched || isFlipped) return;
     hapticImpact('light');
     onClick();
   };
 
-  // Theme-specific card back styles
-  const cardBack = {
-    museum: {
-      bg: 'from-amber-800 via-amber-700 to-yellow-700',
-      border: 'border-amber-500/60',
-      hoverBorder: 'hover:border-yellow-300/80',
-      matchedBg: 'from-amber-400 via-amber-500 to-amber-600 border-amber-300 shadow-amber-500/40',
-      frontBg: 'from-slate-100 to-amber-50 border-slate-300',
-      burstColor: 'rgba(250,204,21,0.6)',
-      centerIcon: '🏛️',
-      pattern: (i: number) => (
-        <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id={`tile-${i}`} x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse">
-              <circle cx="8" cy="8" r="1.5" fill="rgba(250,204,21,0.8)" />
-              <path d="M0 0 L8 8 L16 0 M0 16 L8 8 L16 16" stroke="rgba(250,204,21,0.4)" strokeWidth="0.5" fill="none" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill={`url(#tile-${i})`} />
-        </svg>
-      ),
-    },
-    nature: {
-      bg: 'from-green-900 via-green-800 to-emerald-800',
-      border: 'border-green-500/50',
-      hoverBorder: 'hover:border-green-300/70',
-      matchedBg: 'from-green-400 via-green-500 to-emerald-500 border-green-300 shadow-green-500/40',
-      frontBg: 'from-green-50 to-emerald-50 border-green-200',
-      burstColor: 'rgba(74,222,128,0.6)',
-      centerIcon: '🌿',
-      pattern: (i: number) => (
-        <svg className="absolute inset-0 w-full h-full opacity-15" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id={`leaf-${i}`} x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-              <ellipse cx="10" cy="6" rx="4" ry="6" fill="none" stroke="rgba(74,222,128,0.6)" strokeWidth="0.8" />
-              <line x1="10" y1="12" x2="10" y2="20" stroke="rgba(74,222,128,0.4)" strokeWidth="0.6" />
-              <circle cx="4" cy="16" r="2" fill="none" stroke="rgba(52,211,153,0.4)" strokeWidth="0.5" />
-              <circle cx="16" cy="16" r="2" fill="none" stroke="rgba(52,211,153,0.4)" strokeWidth="0.5" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill={`url(#leaf-${i})`} />
-        </svg>
-      ),
-    },
-    urban: {
-      bg: 'from-zinc-900 via-zinc-800 to-zinc-900',
-      border: 'border-[#00ff88]/30',
-      hoverBorder: 'hover:border-[#00ff88]/70',
-      matchedBg: 'from-[#00ff88]/30 via-[#00e5ff]/20 to-[#ff0080]/20 border-[#00ff88]/80 shadow-[#00ff88]/30',
-      frontBg: 'from-zinc-100 to-zinc-200 border-zinc-300',
-      burstColor: 'rgba(0,255,136,0.5)',
-      centerIcon: '🎨',
-      pattern: (i: number) => (
-        <svg className="absolute inset-0 w-full h-full opacity-25" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id={`spray-${i}`} x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-              <circle cx="4" cy="4" r="1" fill="rgba(0,255,136,0.7)" />
-              <circle cx="20" cy="4" r="0.7" fill="rgba(0,229,255,0.6)" />
-              <circle cx="12" cy="12" r="1.5" fill="rgba(255,0,128,0.5)" />
-              <circle cx="4" cy="20" r="0.8" fill="rgba(0,255,136,0.5)" />
-              <circle cx="20" cy="20" r="1" fill="rgba(0,229,255,0.7)" />
-              <line x1="0" y1="12" x2="24" y2="12" stroke="rgba(0,255,136,0.15)" strokeWidth="0.5" />
-              <line x1="12" y1="0" x2="12" y2="24" stroke="rgba(0,229,255,0.15)" strokeWidth="0.5" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill={`url(#spray-${i})`} />
-        </svg>
-      ),
-    },
-  }[theme];
+  const faceUp = isFlipped || isMatched;
 
   return (
     <motion.div
       className="aspect-square cursor-pointer select-none"
-      initial={{ opacity: 0, scale: 0.4, y: (index % 3 === 0 ? -30 : index % 3 === 1 ? 30 : 0) }}
+      initial={{ opacity: 0, scale: 0.5, y: index % 3 === 0 ? -22 : index % 3 === 1 ? 22 : 0 }}
       animate={{
         opacity: 1,
         scale: 1,
         y: 0,
-        x: isMismatched ? [0, -8, 8, -6, 6, -3, 3, 0] : 0,
+        x: isMismatched ? [0, -7, 7, -5, 5, -2, 2, 0] : 0,
       }}
       transition={{
-        opacity:  { delay: index * 0.04, duration: 0.25 },
-        scale:    { delay: index * 0.04, duration: 0.3, type: 'spring', stiffness: 220, damping: 18 },
-        y:        { delay: index * 0.04, duration: 0.3, type: 'spring' },
+        opacity: { delay: index * 0.028, duration: 0.24 },
+        scale: { delay: index * 0.028, type: 'spring', stiffness: 240, damping: 19 },
+        y: { delay: index * 0.028, type: 'spring', stiffness: 240, damping: 19 },
         x: isMismatched ? { duration: 0.4, ease: 'easeInOut' } : {},
       }}
-      whileHover={!disabled && !isMatched && !isFlipped ? { scale: 1.08, y: -3 } : {}}
-      whileTap={!disabled && !isMatched ? { scale: 0.92 } : {}}
+      whileHover={!disabled && !faceUp ? { scale: 1.07, y: -3 } : {}}
+      whileTap={!disabled && !isMatched ? { scale: 0.93 } : {}}
       onClick={handleClick}
+      role="button"
+      aria-label={faceUp ? `Card showing ${emoji}` : 'Face-down card'}
+      aria-pressed={faceUp}
     >
-      <div
-        className="relative w-full h-full"
-        style={{ perspective: '1200px', willChange: 'transform' }}
-      >
+      <div className="relative h-full w-full" style={{ perspective: '1200px' }}>
         <motion.div
-          className="w-full h-full relative"
+          className="relative h-full w-full"
           initial={false}
-          animate={{ rotateY: isFlipped || isMatched ? 180 : 0 }}
-          transition={{ duration: 0.13, ease: [0.4, 0, 0.2, 1] }}
+          animate={{ rotateY: faceUp ? 180 : 0 }}
+          transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
           style={{ transformStyle: 'preserve-3d', willChange: 'transform' }}
         >
-          {/* ── Card Back ─────────────────────────────────────────────────── */}
+          {/* ── Back ──────────────────────────────────────────────────────── */}
           <div
-            className="absolute w-full h-full rounded-xl overflow-hidden"
-            style={{
-              backfaceVisibility: 'hidden',
-              WebkitBackfaceVisibility: 'hidden',
-            }}
+            className="absolute h-full w-full overflow-hidden rounded-xl"
+            style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
           >
-            <div className={`
-              w-full h-full rounded-xl flex items-center justify-center relative
-              bg-gradient-to-br ${cardBack.bg}
-              border-2 ${cardBack.border}
-              shadow-lg transition-colors duration-150
-              ${!disabled && !isMatched ? cardBack.hoverBorder : ''}
-            `}>
-              {cardBack.pattern(index)}
+            <div
+              className="relative flex h-full w-full items-center justify-center rounded-xl transition-colors duration-150"
+              style={{
+                background: `linear-gradient(150deg, ${skin.backFrom} 0%, ${skin.backVia} 55%, ${skin.backTo} 100%)`,
+                border: `1.5px solid ${skin.border}`,
+                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 6px 18px -10px rgba(0,0,0,0.9)`,
+              }}
+            >
+              <CardPattern kind={skin.pattern} uid={`${skin.id}-${index}`} tint={skin.accent} />
 
-              {/* Ornamental border rings */}
-              <div className="absolute inset-[3px] rounded-lg border border-white/10 pointer-events-none" />
-              <div className="absolute inset-[6px] rounded-md border border-white/5 pointer-events-none" />
+              {/* Inlaid frame */}
+              <div className="pointer-events-none absolute inset-[3px] rounded-[9px] border border-white/10" />
+              <div
+                className="pointer-events-none absolute inset-[6px] rounded-md border"
+                style={{ borderColor: `${skin.accent}22` }}
+              />
 
-              {/* Center icon — only animate when face-up to avoid GPU repaint bleed-through */}
               <motion.div
-                className="text-2xl sm:text-3xl md:text-3xl z-10 filter drop-shadow-lg"
-                animate={!disabled && !isFlipped && !isMatched ? {
-                  scale: [1, 1.06, 1],
-                  opacity: [0.9, 1, 0.9],
-                } : { scale: 1, opacity: 0.9 }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: index * 0.15 }}
+                className="z-10 text-2xl drop-shadow-lg sm:text-3xl"
+                animate={
+                  !disabled && !faceUp
+                    ? { scale: [1, 1.06, 1], opacity: [0.82, 1, 0.82] }
+                    : { scale: 1, opacity: 0.85 }
+                }
+                transition={{
+                  duration: 2.6,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                  delay: index * 0.13,
+                }}
               >
-                {cardBack.centerIcon}
+                {skin.glyph}
               </motion.div>
 
               {isObscured && (
-                <div className="absolute inset-0 z-20 bg-gradient-to-br from-amber-100/35 via-stone-300/20 to-transparent backdrop-blur-[2px]" />
+                <div
+                  className="absolute inset-0 z-20 backdrop-blur-[2px]"
+                  style={{
+                    background: `linear-gradient(150deg, ${skin.accent}44, transparent 70%)`,
+                  }}
+                />
               )}
             </div>
           </div>
 
-          {/* ── Card Front ────────────────────────────────────────────────── */}
+          {/* ── Front ─────────────────────────────────────────────────────── */}
           <div
-            className="absolute w-full h-full rounded-xl overflow-hidden"
+            className="absolute h-full w-full overflow-hidden rounded-xl"
             style={{
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
               transform: 'rotateY(180deg)',
             }}
           >
-            <div className={`
-              w-full h-full rounded-xl flex items-center justify-center relative
-              border-2 shadow-lg
-              ${isMatched
-                ? `bg-gradient-to-br ${cardBack.matchedBg}`
-                : `bg-gradient-to-br ${cardBack.frontBg}`
+            <div
+              className="relative flex h-full w-full items-center justify-center rounded-xl transition-colors duration-200"
+              style={
+                isMatched
+                  ? {
+                      background: `linear-gradient(150deg, ${skin.matchedFrom}, ${skin.matchedVia} 55%, ${skin.matchedTo})`,
+                      border: `1.5px solid ${skin.matchedBorder}`,
+                      boxShadow: `0 0 20px -4px ${skin.glow}`,
+                    }
+                  : {
+                      background: `linear-gradient(150deg, ${skin.frontFrom}, ${skin.frontTo})`,
+                      border: `1.5px solid ${skin.frontBorder}`,
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+                    }
               }
-              transition-colors duration-200
-            `}>
-              {/* Match burst */}
+            >
               {isMatched && (
                 <motion.div
                   className="absolute inset-0 rounded-xl"
                   initial={{ scale: 0.6, opacity: 0.9 }}
                   animate={{ scale: 2.2, opacity: 0 }}
                   transition={{ duration: 0.5 }}
-                  style={{ background: `radial-gradient(circle, ${cardBack.burstColor} 0%, transparent 70%)` }}
+                  style={{ background: `radial-gradient(circle, ${skin.burst} 0%, transparent 70%)` }}
                 />
               )}
 
-              {/* Emoji */}
               <motion.div
-                className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl filter drop-shadow-md z-10 ${isHinted ? 'drop-shadow-[0_0_12px_rgba(250,204,21,0.85)]' : ''}`}
+                className="z-10 text-2xl drop-shadow-md sm:text-3xl md:text-4xl"
+                style={isHinted ? { filter: `drop-shadow(0 0 12px ${skin.glow})` } : undefined}
                 initial={false}
-                animate={isMatched ? {
-                  scale: [1, 1.4, 1.1],
-                  rotate: [0, 12, -12, 0],
-                } : isHinted ? {
-                  scale: [1, 1.14, 1],
-                  rotate: [0, -6, 6, 0],
-                } : { scale: 1, rotate: 0 }}
+                animate={
+                  isMatched
+                    ? { scale: [1, 1.38, 1.1], rotate: [0, 11, -11, 0] }
+                    : isHinted
+                      ? { scale: [1, 1.13, 1], rotate: [0, -6, 6, 0] }
+                      : { scale: 1, rotate: 0 }
+                }
                 transition={{ duration: 0.35, ease: 'backOut' }}
               >
                 {emoji}
               </motion.div>
 
               {isHinted && !isMatched && (
-                <div className="absolute inset-[4px] rounded-xl border-2 border-amber-300/80 shadow-[0_0_16px_rgba(250,204,21,0.45)]" />
+                <div
+                  className="absolute inset-[4px] rounded-lg border-2"
+                  style={{ borderColor: skin.glow, boxShadow: `0 0 16px ${skin.burst}` }}
+                />
               )}
 
-              {/* Matched checkmark */}
               {isMatched && (
                 <motion.div
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="absolute bottom-1 right-1 text-xs"
+                  className="absolute bottom-1 right-1.5 text-[0.65rem] font-bold text-white/80"
                 >
                   ✓
                 </motion.div>

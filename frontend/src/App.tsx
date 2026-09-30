@@ -13,12 +13,12 @@ import NameEntry from './components/NameEntry';
 import DifficultySelector from './components/DifficultySelector';
 import GameBoard from './components/GameBoard';
 import WinModal from './components/WinModal';
-import Header from './components/Header';
+import AppShell, { NavKey } from './components/AppShell';
 import Leaderboard from './components/Leaderboard';
 import TelegramRequired from './components/TelegramRequired';
 import UserDashboard from './components/UserDashboard';
 import FarewellScreen from './components/FarewellScreen';
-import Waves from './components/Waves';
+import MuseumBackground from './components/MuseumBackground';
 import LevelSelector from './components/LevelSelector';
 import AchievementToast from './components/AchievementToast';
 import GhostReplayModal from './components/GhostReplayModal';
@@ -293,88 +293,89 @@ function App() {
     return <FarewellScreen onPlayAgain={() => setScreen('level-select')} />;
   }
 
-  return (
-    <div className={`min-h-screen theme-${theme} relative`}
-      style={{ backgroundColor: 'var(--theme-bg)', color: 'var(--theme-text)' }}
-    >
-      <Waves
-        lineColor="rgba(255, 255, 255, 0.12)"
-        backgroundColor="transparent"
-        waveSpeedX={0.0125}
-        waveSpeedY={0.005}
-        waveAmpX={32}
-        waveAmpY={16}
-        xGap={10}
-        yGap={32}
-        friction={0.925}
-        tension={0.005}
-        maxCursorMove={100}
-      />
-      <div className="relative z-10">
-        {screen !== 'name-entry' && (
-          <Header
-            onShowLeaderboard={handleShowLeaderboard}
-            onBackToDifficulty={handleBackToDifficulty}
-            onShowDashboard={handleShowDashboard}
-            onLeave={handleLeaveGame}
-            currentScreen={screen}
-          />
-        )}
+  const navActive: NavKey =
+    screen === 'dashboard' ? 'dashboard'
+    : screen === 'leaderboard' ? 'hall'
+    : 'museum';
 
-        <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
-          {screen === 'name-entry' && (
-            <NameEntry onContinue={() => setScreen(pendingRoomId ? 'challenge-room' : 'level-select')} />
-          )}
+  const handleNavigate = (key: NavKey) => {
+    if (key === 'dashboard') return handleShowDashboard();
+    if (key === 'hall') return handleShowLeaderboard();
+    // "Enter Museum" from inside a game confirms before discarding the run.
+    return handleBackToDifficulty();
+  };
 
-          {/* New level-select screen — primary entry point */}
-          {screen === 'level-select' && (
-            <LevelSelector onStart={handleLevelStart} onStartWeekly={async () => {
-              await startWeeklyChallenge();
-              setScreen('game');
-            }} onCreateChallenge={handleCreateChallenge} />
-          )}
-
-          {screen === 'challenge-room' && activeRoomId && (
-            <ChallengeRoom roomId={activeRoomId} onBack={handleLeaveRoom} onPlay={handleOpenRoom} />
-          )}
-
-          {/* Legacy difficulty screen — kept for blockchain mode backward compat */}
-          {screen === 'difficulty' && (
-            <DifficultySelector
-              onStart={() => setScreen('game')}
-              onSwitchToLevels={handleSwitchToLevels}
-            />
-          )}
-
-          {screen === 'game' && currentGame && (
-            !showLevelIntro ? <GameBoard /> : null
-          )}
-
-          {screen === 'leaderboard' && (
-            <Leaderboard onBack={handleBackToDifficulty} />
-          )}
-
-          {screen === 'dashboard' && (
-            <UserDashboard />
-          )}
-        </main>
-
-        {showWinModal && (
-          <WinModal
-            onClose={handleWinModalClose}
-            onNextLevel={currentEra !== null && challengeMode !== 'room' ? handleNextLevel : undefined}
-            onShowGhostReplay={handleShowGhostReplay}
-          />
-        )}
-
-        {/* Ghost replay modal — shown after win modal closes if replay is available */}
-        {showGhostReplay && ghostReplayData && (
-          <GhostReplayModal
-            replay={ghostReplayData}
-            onClose={handleGhostReplayClose}
-          />
-        )}
+  // Name entry owns the whole viewport — no chrome, no nav.
+  if (screen === 'name-entry') {
+    return (
+      <div className={`theme-${theme} mu-vignette relative min-h-dvh`} style={{ color: 'var(--mu-text)' }}>
+        <MuseumBackground era={null} />
+        <NameEntry onContinue={() => setScreen(pendingRoomId ? 'challenge-room' : 'level-select')} />
+        <IntroCinematic
+          mode="opening"
+          open={showOpeningIntro}
+          onComplete={() => { setShowOpeningIntro(false); setShowSplashIntro(true); }}
+        />
+        <IntroCinematic
+          mode="splash"
+          open={showSplashIntro}
+          onComplete={() => { setShowSplashIntro(false); setStartupIntroResolved(true); }}
+        />
       </div>
+    );
+  }
+
+  return (
+    <div className={`theme-${theme} mu-vignette relative min-h-dvh`} style={{ color: 'var(--mu-text)' }}>
+      {/* Ambience takes the era of whatever is being played */}
+      <MuseumBackground era={screen === 'game' ? currentEra : null} level={currentLevel} />
+
+      <AppShell
+        active={navActive}
+        onNavigate={handleNavigate}
+        topSlot={
+          screen === 'game' && currentGame ? (
+            <button onClick={handleLeaveGame} className="mu-btn-ghost px-3 py-1.5 text-sm">
+              ← Leave run
+            </button>
+          ) : null
+        }
+      >
+        {screen === 'level-select' && (
+          <LevelSelector
+            onStart={handleLevelStart}
+            onStartWeekly={async () => { await startWeeklyChallenge(); setScreen('game'); }}
+            onCreateChallenge={handleCreateChallenge}
+          />
+        )}
+
+        {screen === 'challenge-room' && activeRoomId && (
+          <ChallengeRoom roomId={activeRoomId} onBack={handleLeaveRoom} onPlay={handleOpenRoom} />
+        )}
+
+        {/* Legacy difficulty screen — kept for blockchain mode backward compat */}
+        {screen === 'difficulty' && (
+          <DifficultySelector onStart={() => setScreen('game')} onSwitchToLevels={handleSwitchToLevels} />
+        )}
+
+        {screen === 'game' && currentGame && !showLevelIntro && <GameBoard />}
+
+        {screen === 'leaderboard' && <Leaderboard onBack={handleBackToDifficulty} />}
+
+        {screen === 'dashboard' && <UserDashboard />}
+      </AppShell>
+
+      {showWinModal && (
+        <WinModal
+          onClose={handleWinModalClose}
+          onNextLevel={currentEra !== null && challengeMode !== 'room' ? handleNextLevel : undefined}
+          onShowGhostReplay={handleShowGhostReplay}
+        />
+      )}
+
+      {showGhostReplay && ghostReplayData && (
+        <GhostReplayModal replay={ghostReplayData} onClose={handleGhostReplayClose} />
+      )}
 
       {/* Achievement toast — always rendered, reads from store */}
       <AchievementToast

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { GhostReplay, Difficulty, ERA_LEVEL_CONFIGS, ReplayMove } from '../types';
 import { useGameStore } from '../store/gameStore';
 import Card from './Card';
+import { getCardSkin } from '../theme/cardSkins';
 
 interface GhostReplayModalProps {
   replay: GhostReplay;
@@ -205,6 +206,7 @@ export default function GhostReplayModal({ replay, era: eraProp, level: levelPro
                     <Card
                       key={idx}
                       emoji={emojis[idx] ?? '❓'}
+                      skin={getCardSkin(replay.era, replay.level)}
                       isFlipped={isFlipped}
                       isMatched={isMatched}
                       onClick={() => {}}
