@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ensureDb, sql } from './_db';
-import { verifyTelegramAuth } from './_auth';
+import { requireTelegramUser } from './_auth';
 import { getClientKey, rateLimit } from './_rateLimit';
 import { logApiError } from './_telemetry';
 
@@ -9,25 +9,7 @@ function roomId() {
 }
 
 async function verifyUser(body: any) {
-  const { telegramUser, initData } = body;
-  if (!telegramUser?.id) throw new Error('Missing Telegram user');
-
-  const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
-  if (botToken) {
-    if (!initData) throw new Error('Missing Telegram verification data');
-    const auth = verifyTelegramAuth(initData, botToken);
-    if (!auth.valid || !auth.user || auth.user.id !== telegramUser.id) {
-      throw new Error(`Unauthorized: ${auth.reason ?? 'verification failed'}`);
-    }
-    return {
-      id: auth.user.id,
-      username: auth.user.username,
-      first_name: auth.user.first_name || telegramUser.first_name,
-      last_name: auth.user.last_name,
-    };
-  }
-
-  return telegramUser;
+  return requireTelegramUser(body);
 }
 
 async function upsertUser(user: { id: number; username?: string; first_name?: string; last_name?: string }) {

@@ -1,4 +1,5 @@
 import { TelegramWebApp, TelegramUser } from '../types';
+import { debug } from '../lib/log';
 
 /**
  * Get Telegram WebApp instance
@@ -28,7 +29,7 @@ export function initTelegramApp(): TelegramUser | null {
     return null;
   }
 
-  console.log('📱 Initializing Telegram Mini App...');
+  debug('Initializing Telegram Mini App...');
   
   // Signal that the app is ready
   webApp.ready();
@@ -47,7 +48,7 @@ export function initTelegramApp(): TelegramUser | null {
   const user = webApp.initDataUnsafe.user;
   
   if (user) {
-    console.log('✅ Telegram user:', user);
+    debug('Telegram user:', user);
     return user;
   }
   

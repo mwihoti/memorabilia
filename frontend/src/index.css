@@ -55,66 +55,6 @@ body {
   --header-font:     'Cormorant Garamond', Georgia, serif;
 }
 
-/* Nature theme */
-.theme-nature {
-  --theme-bg:        #052e16;
-  --theme-surface:   #14532d;
-  --theme-border:    rgba(34,197,94,0.3);
-  --theme-accent:    #4ade80;
-  --theme-accent2:   #16a34a;
-  --theme-text:      #f0fdf4;
-  --theme-muted:     #86efac;
-  --card-back-from:  #14532d;
-  --card-back-to:    #166534;
-  --card-back-icon:  "🌿";
-  --header-font:     'Inter', serif;
-}
-
-/* Urban / Graffiti theme */
-.theme-urban {
-  --theme-bg:        #09090b;
-  --theme-surface:   #18181b;
-  --theme-border:    rgba(0,255,136,0.25);
-  --theme-accent:    #00ff88;
-  --theme-accent2:   #ff0080;
-  --theme-text:      #fafafa;
-  --theme-muted:     #a1a1aa;
-  --card-back-from:  #18181b;
-  --card-back-to:    #27272a;
-  --card-back-icon:  "🎨";
-  --header-font:     'Bebas Neue', sans-serif;
-}
-
-/* ── Graffiti utilities ───────────────────────────────────────────────────── */
-.font-graffiti   { font-family: 'Permanent Marker', cursive; }
-.font-street     { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
-
-/* Spray-paint glow */
-.glow-neon  { text-shadow: 0 0 8px #00ff88, 0 0 20px #00ff88; }
-.glow-pink  { text-shadow: 0 0 8px #ff0080, 0 0 20px #ff0080; }
-.glow-cyan  { text-shadow: 0 0 8px #00e5ff, 0 0 20px #00e5ff; }
-
-/* Urban neon border */
-.border-neon { border: 2px solid #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.4); }
-.border-pink { border: 2px solid #ff0080; box-shadow: 0 0 10px rgba(255,0,128,0.4); }
-
-/* Spray paint circle behind text */
-.spray::before {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(0,255,136,0.15) 0%, transparent 70%);
-  pointer-events: none;
-}
-
-/* ── Nature utilities ─────────────────────────────────────────────────────── */
-.leaf-pattern {
-  background-image:
-    radial-gradient(circle at 20% 80%, rgba(34,197,94,0.08) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(22,163,74,0.08) 0%, transparent 50%);
-}
-
 /* ── Mobile-first base ───────────────────────────────────────────────────── */
 
 /* Minimum tap target */
@@ -189,21 +129,6 @@ button, [role="button"] {
   100% { transform: translateY(100vh); }
 }
 /* Urban scanline overlay — applied in urban theme */
-.theme-urban .scanline::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,0,0,0.03) 2px,
-    rgba(0,0,0,0.03) 4px
-  );
-  pointer-events: none;
-  z-index: 100;
-}
-
 /* ── Glass morphism ────────────────────────────────────────────────────────── */
 .glass {
   background: rgba(255,255,255,0.07);
@@ -215,18 +140,6 @@ button, [role="button"] {
 /* ── Gradient text utility ────────────────────────────────────────────────── */
 .gradient-text {
   background: linear-gradient(135deg, #f59e0b, #b45309);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.gradient-text-nature {
-  background: linear-gradient(135deg, #4ade80, #16a34a);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.gradient-text-urban {
-  background: linear-gradient(135deg, #00ff88, #00e5ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

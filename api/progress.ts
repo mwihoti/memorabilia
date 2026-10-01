@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ensureDb, sql } from './_db';
-import { verifyTelegramAuth } from './_auth';
+import { requireTelegramUser, AuthError } from './_auth';
 import { getClientKey, rateLimit } from './_rateLimit';
 import { logApiError } from './_telemetry';
 
@@ -38,14 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!telegramUser?.id || !action) return res.status(400).json({ message: 'Missing required fields' });
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
-    if (botToken) {
-      if (!initData) return res.status(401).json({ message: 'Missing Telegram verification data' });
-      const auth = verifyTelegramAuth(initData, botToken);
-      if (!auth.valid || auth.user?.id !== telegramUser.id) {
-        return res.status(401).json({ message: `Unauthorized: ${auth.reason ?? 'verification failed'}` });
-      }
-    }
+    await requireTelegramUser({ telegramUser, initData });
 
     const tid = BigInt(telegramUser.id);
     await sql`
@@ -116,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ success: true });
   } catch (error: any) {
+    if (error instanceof AuthError) return res.status(401).json({ message: error.message });
     await logApiError('progress', error);
     return res.status(500).json({ message: error.message || 'Internal server error' });
   }

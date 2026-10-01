@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { hapticImpact } from '../telegram/telegram';
 
-export type NavKey = 'museum' | 'hall' | 'dashboard';
+export type NavKey = 'museum' | 'activities' | 'collection' | 'dashboard';
 
 export interface NavItem {
   key: NavKey;
@@ -13,7 +13,8 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { key: 'museum', label: 'Enter Museum', icon: '🏛️' },
-  { key: 'hall', label: 'Hall of Fame', icon: '🏆' },
+  { key: 'activities', label: 'Activities', icon: '⚔️' },
+  { key: 'collection', label: 'Collection', icon: '🏺' },
   { key: 'dashboard', label: 'Dashboard', icon: '📊' },
 ];
 

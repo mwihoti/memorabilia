@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, ensureDb } from '../_db';
+import { requireTelegramUser, AuthError } from '../_auth';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -7,7 +8,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
+  // POST so initData can travel in the body rather than a query string, where
+  // it would end up in access logs and browser history.
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Use POST with initData' });
 
   const rawId = req.query.telegramId as string;
   const telegramId = BigInt(rawId || '0');
@@ -16,6 +19,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await ensureDb();
+
+    // A player may only read their own file. Without this check anyone could
+    // walk the id space and harvest names.
+    const caller = await requireTelegramUser(req.body);
+    if (BigInt(caller.id) !== telegramId) {
+      return res.status(403).json({ message: 'You can only read your own profile' });
+    }
 
     const userRows = await sql`
       SELECT

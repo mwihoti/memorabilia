@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { sql, ensureDb } from './_db';
 
 const TOKEN    = process.env.BOT_TOKEN!;
 const WEB_APP  = process.env.WEB_APP_URL || 'https://memorabilia-game.vercel.app';
@@ -51,9 +52,13 @@ const KB_MAIN = {
 const KB_THEME_PICK = {
   inline_keyboard: [
     [
-      { text: '🏛️ Museum', callback_data: 'theme:museum' },
-      { text: '🌿 Nature', callback_data: 'theme:nature' },
-      { text: '🎨 Urban',  callback_data: 'theme:urban'  },
+      { text: '🏺 Ancient',  callback_data: 'theme:ancient'  },
+      { text: '⚔️ Medieval', callback_data: 'theme:medieval' },
+      { text: '🚀 Modern',   callback_data: 'theme:modern'   },
+    ],
+    [
+      { text: '🛸 Future', callback_data: 'theme:future' },
+      { text: '🐲 Mythic', callback_data: 'theme:mythic' },
     ],
     [{ text: '« Back to Menu', callback_data: 'main' }],
   ],
@@ -78,7 +83,7 @@ const KB_BACK = {
 function welcomeText(name: string) {
   return (
     `🏛️ <b>Hey ${name}! Welcome to Memorabilia!</b>\n\n` +
-    `I'm your guide to the on-chain memory card game built on Starknet.\n\n` +
+    `I'm your guide to the Time-Travel Museum — a memory game with verified scores.\n\n` +
     `Flip cards, find matching pairs, and climb the <b>Hall of Fame</b>!\n\n` +
     `👇 What would you like to do?`
   );
@@ -93,21 +98,23 @@ const HOW_TEXT =
   '🎨 There are 3 visual themes to play in — pick one 👇';
 
 const THEMES_TEXT =
-  '🎨 <b>Visual Themes</b>\n\n' +
-  '🏛️ <b>Museum</b> — Golden amber tones &amp; classical artifacts\n' +
-  '🌿 <b>Nature</b> — Forest greens &amp; leaf patterns\n' +
-  '🎨 <b>Urban</b> — Neon graffiti &amp; spray-paint effects\n\n' +
-  'Tap one to learn more 👇';
+  '🗺️ <b>The Five Eras</b>\n\n' +
+  '🏺 <b>Ancient</b> — clay, ochre and the first written things\n' +
+  '⚔️ <b>Medieval</b> — iron, heraldry and siege\n' +
+  '🚀 <b>Modern</b> — steel, signal and the century in motion\n' +
+  '🛸 <b>Future</b> — plasma and artifacts not yet made\n' +
+  '🐲 <b>Mythic</b> — the sealed vault\n\n' +
+  'Each era has its own board, its own relics and its own look. Tap one 👇';
 
 const ABOUT_TEXT =
   '🏛️ <b>About Memorabilia</b>\n\n' +
-  'An on-chain memory card game built on <b>Starknet</b>.\n\n' +
-  '⚡ <b>Dojo Engine</b> — Provable game logic\n' +
-  '🔷 <b>Starknet</b> — Layer 2 blockchain\n' +
-  '🎨 <b>3 Visual Themes</b> — Museum, Nature, Urban\n' +
-  '📊 <b>Live leaderboard</b> — Neon PostgreSQL\n' +
-  '📱 <b>Telegram Mini App</b> — No install needed\n\n' +
-  '🚀 Built by a 6-person team for Starknet Game Jam';
+  'A memory game set in a museum of five eras, played inside Telegram.\n\n' +
+  '🏺 <b>400 levels</b> across Ancient, Medieval, Modern, Future and Mythic\n' +
+  '✅ <b>Verified scores</b> — every run is replayed server-side before it counts\n' +
+  '⚔️ <b>Duels, ladders and boss hunts</b> — weekly resets, nobody is locked out\n' +
+  '📱 <b>No install, no wallet</b> — it runs in this chat\n\n' +
+  'Settlement on <b>Starknet</b> is in progress; scores are verified today and ' +
+  'will be anchored on-chain once the world is deployed.';
 
 const HELP_TEXT =
   '📖 <b>How to Play Memorabilia</b>\n\n' +
@@ -121,35 +128,16 @@ const HELP_TEXT =
   '<i>Tip: Pay close attention during the preview!</i>';
 
 const THEME_DETAILS: Record<string, { icon: string; name: string; body: string }> = {
-  museum: {
-    icon: '🏛️', name: 'The Museum',
-    body:
-      '✨ Ornamental amber card backs with classical patterns\n' +
-      '🏺 Artifacts from Ancient, Medieval &amp; Modern eras\n' +
-      '🥇 Hall of Fame leaderboard in gold &amp; bronze\n\n' +
-      '<i>Perfect for fans of history and elegance.</i>',
-  },
-  nature: {
-    icon: '🌿', name: 'Nature Trails',
-    body:
-      '🍃 Leaf-pattern card backs in deep forest green\n' +
-      '🦋 Nature-themed emoji artifacts across all eras\n' +
-      '🌲 Earthy textures and soft glow effects\n\n' +
-      '<i>Perfect for those who love the outdoors.</i>',
-  },
-  urban: {
-    icon: '🎨', name: 'Urban Gallery',
-    body:
-      '💥 Spray-paint card backs with neon green glow\n' +
-      '🏙️ Graffiti typography and electric colour pops\n' +
-      '⚡ Scanline overlay and pink + cyan accent effects\n\n' +
-      '<i>Perfect for fans of street art and urban culture.</i>',
-  },
+  ancient:  { icon: '🏺', name: 'Ancient Era',    body: '50 levels. Clay, ochre and a Greek key running under every card.' },
+  medieval: { icon: '⚔️', name: 'Medieval Times', body: '50 levels. Cold iron and a heraldic lattice. Unlocked by finishing Ancient.' },
+  modern:   { icon: '🚀', name: 'Modern Era',     body: '100 levels. Brushed steel and circuit traces.' },
+  future:   { icon: '🛸', name: 'Future Nexus',   body: '100 levels. Violet plasma and a hex mesh.' },
+  mythic:   { icon: '🐲', name: 'Mythic Vault',   body: '100 levels. Obsidian and dragonfire. The last era.' },
 };
 
 function themeText(theme: string) {
-  const t = THEME_DETAILS[theme] || THEME_DETAILS.museum;
-  return `${t.icon} <b>${t.name}</b>\n\n${t.body}\n\nThe theme is selected inside the game 👇`;
+  const t = THEME_DETAILS[theme] || THEME_DETAILS.ancient;
+  return `${t.icon} <b>${t.name}</b>\n\n${t.body}\n\nOpen the museum to play it 👇`;
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
@@ -180,23 +168,105 @@ async function leaderboardText() {
 async function handleMessage(msg: any) {
   const chatId = msg.chat.id;
   const text: string = msg.text || '';
+
+/**
+ * Record the chat id so scheduled jobs can reach this player, and settle a
+ * referral if they arrived through someone's link.
+ *
+ * Referral rules: you cannot invite yourself, you cannot be invited twice, and
+ * the reward only pays out when the invitee actually finishes a level (handled
+ * in `_rewards.ts`) — otherwise the link is a free power-up faucet.
+ */
+async function registerContact(
+  from: { id: number; username?: string; first_name?: string; last_name?: string },
+  chatId: number,
+  inviterId: number | null,
+) {
+  await ensureDb();
+  const tid = BigInt(from.id);
+
+  await sql`
+    INSERT INTO users (telegram_id, username, first_name, last_name, chat_id)
+    VALUES (${tid}, ${from.username ?? null}, ${from.first_name ?? null}, ${from.last_name ?? null}, ${chatId})
+    ON CONFLICT (telegram_id) DO UPDATE SET
+      username = COALESCE(EXCLUDED.username, users.username),
+      first_name = COALESCE(EXCLUDED.first_name, users.first_name),
+      chat_id = EXCLUDED.chat_id,
+      last_active = NOW()
+  `;
+
+  if (!inviterId || inviterId === from.id) return false;
+
+  const existing = await sql`SELECT referred_by FROM users WHERE telegram_id = ${tid}`;
+  if ((existing as any[])[0]?.referred_by) return false;
+
+  const inviter = await sql`SELECT telegram_id FROM users WHERE telegram_id = ${BigInt(inviterId)}`;
+  if (!(inviter as any[]).length) return false;
+
+  await sql`UPDATE users SET referred_by = ${BigInt(inviterId)} WHERE telegram_id = ${tid}`;
+  await sql`
+    INSERT INTO referrals (inviter_telegram_id, invitee_telegram_id)
+    VALUES (${BigInt(inviterId)}, ${tid})
+    ON CONFLICT (invitee_telegram_id) DO NOTHING
+  `;
+  return true;
+}
+
   const name = h(msg.from?.first_name || 'Explorer');
   const lower = text.toLowerCase();
 
   // /start
   if (text.startsWith('/start')) {
     const ref = text.replace('/start', '').trim();
+
     if (ref.startsWith('theme_')) {
       return sendMessage(chatId, themeText(ref.replace('theme_', '')), { reply_markup: KB_PLAY });
     }
+
+    // ref_<telegramId> — the invite links the game hands out.
+    const inviterId = ref.startsWith('ref_') ? Number(ref.slice(4)) : null;
+    let referred = false;
+    try {
+      referred = await registerContact(
+        msg.from ?? { id: chatId },
+        chatId,
+        Number.isFinite(inviterId) ? inviterId : null,
+      );
+    } catch {
+      // Never let a bookkeeping failure stop someone opening the game.
+    }
+
+    if (referred) {
+      return sendMessage(
+        chatId,
+        `${welcomeText(name)}\n\n🎟️ <b>You were invited.</b> Clear your first level and you both get a hint, a freeze and a boost.`,
+        { reply_markup: KB_MAIN },
+      );
+    }
     return sendMessage(chatId, welcomeText(name), { reply_markup: KB_MAIN });
+  }
+
+  if (text === '/stop' || text === '/mute') {
+    try {
+      await ensureDb();
+      await sql`UPDATE users SET push_enabled = FALSE WHERE chat_id = ${chatId}`;
+    } catch { /* fall through to the confirmation either way */ }
+    return sendMessage(chatId, '🔕 Daily reminders are off. Send /resume to turn them back on.');
+  }
+
+  if (text === '/resume') {
+    try {
+      await ensureDb();
+      await sql`UPDATE users SET push_enabled = TRUE WHERE chat_id = ${chatId}`;
+    } catch { /* fall through */ }
+    return sendMessage(chatId, '🔔 Daily reminders are back on.');
   }
 
   // Commands
   if (text === '/play')        return sendMessage(chatId, '🚀 <b>Let\'s go!</b>\n\nTap below to launch the game.', { reply_markup: KB_PLAY });
   if (text === '/help')        return sendMessage(chatId, HELP_TEXT, { reply_markup: KB_PLAY });
   if (text === '/about')       return sendMessage(chatId, ABOUT_TEXT, { reply_markup: KB_PLAY });
-  if (text === '/themes')      return sendMessage(chatId, THEMES_TEXT, { reply_markup: KB_THEME_PICK });
+  if (text === '/themes' || text === '/eras')      return sendMessage(chatId, THEMES_TEXT, { reply_markup: KB_THEME_PICK });
   if (text === '/leaderboard') {
     const lb = await leaderboardText();
     return sendMessage(chatId, lb, { reply_markup: KB_BACK });

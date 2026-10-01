@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    name: Frontend and API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm ci || npm install --no-audit --no-fund
+
+      - name: Typecheck API
+        run: npx tsc --noEmit -p api/tsconfig.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci || npm install --no-audit --no-fund
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm run test:unit
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  cairo:
+    name: Cairo world
+    runs-on: ubuntu-latest
+    # The world does not compile yet — see ROADMAP.md. This job runs so the
+    # breakage stays visible rather than silently rotting on main, and flips to
+    # required once `sozo build` is green.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dojo
+        run: |
+          curl -L https://install.dojoengine.org | bash
+          echo "$HOME/.dojo/bin" >> "$GITHUB_PATH"
+
+      - name: Install toolchain
+        run: dojoup --version 1.8.0 || true
+
+      - name: Build
+        run: sozo build
+
+      - name: Test
+        run: sozo test

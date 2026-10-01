@@ -34,7 +34,7 @@ export default function UserDashboard() {
       setError(null);
 
       const [stats, board] = await Promise.allSettled([
-        fetchPlayerStats(telegramUser.id),
+        fetchPlayerStats(telegramUser),
         fetchLeaderboard(8),
       ]);
       if (cancelled) return;

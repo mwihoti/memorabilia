@@ -54,16 +54,27 @@ The game now ships with 5 eras and 400 main levels total: Ancient Era (50), Medi
 - **Star ratings** — 1–3 stars per level based on move efficiency
 - **Global leaderboard** — powered by Neon PostgreSQL, updated live
 
-### Visuals
-- **3 themes** — Museum (amber), Nature (forest green), Urban (neon graffiti)
-- **Responsive layout** — works on mobile, tablet, laptop, and large desktop screens
-- **Smooth flip animations** — 3D card flip with correct backface-visibility on all screen sizes
+### Activities
+- **Weekly ladder** — resets every Monday so a new player always has a shot; past winners kept in a Hall of Champions
+- **Seasons** — six-week arcs with their own ladder, scored on a compressed curve so late-era players do not run away with it
+- **Duels** — challenge a friend to the same board; 24 hours to beat the score, settled automatically
+- **Boss hunts** — a 48-hour window on one shared board, announced by the bot, with a relic for clearing it
+- **Guilds** — up to 12 curators pooling a weekly score
+- **Relic collection** — 44 relics, with the unearned ones shown as labelled gaps
+- **Referrals** — invite links reward both sides once the invitee clears a level
 
-### Blockchain
-- **On-chain game logic** — Cairo smart contracts via Dojo engine
-- **Account Abstraction** — gasless gameplay via session keys
-- **NFT minting** — Cartridge wallet integration; mint score NFTs for high achievements
-- **Torii indexer** — real-time on-chain state queries
+### Visuals
+- **Time-Travel Museum theme** — dark gallery, gold leaf, parchment surfaces
+- **Per-era card skins** — Ancient clay, Medieval iron, Modern steel, Future plasma, Mythic obsidian; the back darkens every 10 levels
+- **Animated background** — drifting contours, dust motes and light shafts, tinted by the era being played
+- **Responsive layout** — mobile-first, with a desktop rail and a phone dock
+- **Reduced-motion aware** — the background paints one static frame when the system asks for less motion
+
+### Starknet — in progress, not yet live
+The Cairo world under `src/` is written against Dojo 1.8 but **is not deployed**, and the
+app does not talk to a chain at runtime. Scores are verified server-side by replaying every
+run (`shared/gameRules.ts`). See `ROADMAP.md` for what has to happen before the on-chain
+claims in this README become true.
 
 ---
 
@@ -71,13 +82,14 @@ The game now ships with 5 eras and 400 main levels total: Ancient Era (50), Medi
 
 | Layer | Technology |
 |-------|-----------|
-| Smart Contracts | Cairo + Dojo Engine |
+| Smart Contracts | Cairo + Dojo Engine (written, not deployed) |
 | Frontend | React 18 + Vite + TypeScript + Tailwind CSS |
 | Animations | Framer Motion |
-| Blockchain | Starknet (Katana for local dev) |
+| Blockchain | Starknet — planned; nothing on-chain today |
 | Wallet | Cartridge Controller |
 | Telegram | Mini Apps API + Telegraf bot |
-| Database | Neon PostgreSQL (leaderboard) |
+| Database | Neon PostgreSQL (scores, progression, activities) |
+| Scheduled jobs | Vercel Cron (daily push, weekly rollover, boss rotation, duel settlement) |
 | Deployment | Vercel (frontend + API routes) |
 | Indexing | Torii |
 

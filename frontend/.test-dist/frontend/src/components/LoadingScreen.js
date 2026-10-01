@@ -1,7 +1,0 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.default = LoadingScreen;
-const jsx_runtime_1 = require("react/jsx-runtime");
-function LoadingScreen() {
-    return ((0, jsx_runtime_1.jsx)("div", { className: "min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center", children: (0, jsx_runtime_1.jsxs)("div", { className: "text-center", children: [(0, jsx_runtime_1.jsxs)("div", { className: "mb-8", children: [(0, jsx_runtime_1.jsx)("div", { className: "text-6xl mb-4 animate-bounce", children: "\uD83C\uDFAE" }), (0, jsx_runtime_1.jsx)("h1", { className: "text-4xl font-bold gradient-text mb-2", children: "Memorabilia" }), (0, jsx_runtime_1.jsx)("p", { className: "text-gray-400", children: "On-chain Memory Game" })] }), (0, jsx_runtime_1.jsxs)("div", { className: "flex items-center justify-center space-x-2", children: [(0, jsx_runtime_1.jsx)("div", { className: "w-3 h-3 bg-blue-500 rounded-full animate-bounce", style: { animationDelay: '0ms' } }), (0, jsx_runtime_1.jsx)("div", { className: "w-3 h-3 bg-blue-500 rounded-full animate-bounce", style: { animationDelay: '150ms' } }), (0, jsx_runtime_1.jsx)("div", { className: "w-3 h-3 bg-blue-500 rounded-full animate-bounce", style: { animationDelay: '300ms' } })] }), (0, jsx_runtime_1.jsx)("p", { className: "mt-4 text-sm text-gray-500", children: "Initializing Dojo..." })] }) }));
-}

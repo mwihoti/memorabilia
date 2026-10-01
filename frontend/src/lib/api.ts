@@ -39,6 +39,18 @@ export interface SubmitScoreResult {
   verifiedTimeSeconds?: number;
   adjusted?: boolean;
   message?: string;
+  rewards?: {
+    streak: { current: number; longest: number; lastDate: string | null };
+    streakAdvanced: boolean;
+    granted: { hint: number; freeze: number; boost: number };
+    relicsEarned: string[];
+    achievementsUnlocked: string[];
+    seasonPoints: number;
+    weekKey: string;
+    seasonKey: string;
+    bossCleared: boolean;
+    referralSettled: boolean;
+  };
 }
 
 export async function submitScore(params: SubmitScoreParams): Promise<SubmitScoreResult> {
@@ -106,8 +118,14 @@ export interface PlayerStatsResponse {
   }>;
 }
 
-export async function fetchPlayerStats(telegramId: number): Promise<PlayerStatsResponse | null> {
-  const res = await fetch(`${BASE}/api/player/${telegramId}`);
+export async function fetchPlayerStats(
+  telegramUser: SubmitScoreParams['telegramUser'],
+): Promise<PlayerStatsResponse | null> {
+  const res = await fetch(`${BASE}/api/player/${telegramUser.id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ telegramUser, initData: getInitData() }),
+  });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Failed to fetch player stats');
   return res.json();
@@ -292,4 +310,175 @@ export async function fetchChallengeRoom(roomId: string): Promise<ChallengeRoom>
     throw new Error(err.message || 'Failed to fetch challenge room');
   }
   return res.json();
+}
+
+
+// ── Activities ────────────────────────────────────────────────────────────────
+
+export interface LadderRow {
+  rank: number;
+  telegram_id: number;
+  name: string;
+  best_score: number;
+  games: number;
+}
+
+export interface RelicRow {
+  id: string;
+  name: string;
+  icon: string;
+  era: number;
+  level: number;
+  source: 'level' | 'boss' | 'referral' | 'streak';
+  earned: boolean;
+}
+
+export interface DuelRow {
+  id: string;
+  era: number;
+  level: number;
+  seed: number;
+  status: string;
+  expiresAt: string;
+  hostTelegramId: number;
+  me: { telegramId: number; name: string; score: number | null; timeSeconds: number | null } | null;
+  opponent: { telegramId: number; name: string; score: number | null; timeSeconds: number | null } | null;
+  outcome: 'pending' | 'won' | 'lost' | 'drawn' | 'expired';
+  iWon: boolean;
+}
+
+export interface BossRow {
+  id: number;
+  era: number;
+  level: number;
+  seed: number;
+  relicId: string;
+  title: string;
+  closesAt: string;
+  clears: number;
+  windowHours: number;
+}
+
+export interface ActivityBoard {
+  weekKey: string;
+  resetInMs: number;
+  ladder: LadderRow[];
+  champions: Array<{ week_key: string; score: number; name: string }>;
+  boss: BossRow | null;
+  season: {
+    key: string;
+    name: string;
+    week: number;
+    endsAt: string;
+    board: Array<{ rank: number; telegram_id: number; name: string; points: number }>;
+  };
+  duels: DuelRow[];
+  collection: { total: number; earned: number; relics: RelicRow[] };
+  guild: { id: string; name: string; emblem: string; role: string } | null;
+}
+
+export async function fetchActivities(telegramId?: number): Promise<ActivityBoard> {
+  const query = telegramId ? `?telegramId=${telegramId}` : '';
+  const res = await fetch(`${BASE}/api/activities${query}`);
+  if (!res.ok) throw new Error('Failed to load activities');
+  return res.json();
+}
+
+async function postActivity<T>(body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${BASE}/api/activities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, initData: getInitData() }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export function createDuel(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  difficulty: number;
+  level: number;
+  seed: number;
+  displayName: string;
+}) {
+  return postActivity<{ id: string; expiresAt: string; windowHours: number }>({
+    action: 'duel.create',
+    ...params,
+  });
+}
+
+export function acceptDuel(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  duelId: string;
+  displayName: string;
+}) {
+  return postActivity<{ id: string; expiresAt: string }>({ action: 'duel.accept', ...params });
+}
+
+// ── Guilds ────────────────────────────────────────────────────────────────────
+
+export interface GuildRow {
+  rank: number;
+  id: string;
+  name: string;
+  emblem: string;
+  members: number;
+  weekTotal: number;
+}
+
+export interface GuildDetail {
+  id: string;
+  name: string;
+  emblem: string;
+  ownerTelegramId: number;
+  weekKey: string;
+  weekTotal: number;
+  members: Array<{ telegramId: number; name: string; role: string; weekScore: number }>;
+}
+
+export async function fetchGuilds(): Promise<{ weekKey: string; maxMembers: number; guilds: GuildRow[] }> {
+  const res = await fetch(`${BASE}/api/guild`);
+  if (!res.ok) throw new Error('Failed to load guilds');
+  return res.json();
+}
+
+export async function fetchGuild(id: string): Promise<GuildDetail> {
+  const res = await fetch(`${BASE}/api/guild?id=${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error('Failed to load guild');
+  return res.json();
+}
+
+async function postGuild<T>(body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${BASE}/api/guild`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, initData: getInitData() }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export function createGuild(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  name: string;
+  emblem?: string;
+}) {
+  return postGuild<{ id: string; name: string; emblem: string }>({ action: 'create', ...params });
+}
+
+export function joinGuild(params: {
+  telegramUser: SubmitScoreParams['telegramUser'];
+  guildId: string;
+}) {
+  return postGuild<{ id: string }>({ action: 'join', ...params });
+}
+
+export function leaveGuild(params: { telegramUser: SubmitScoreParams['telegramUser'] }) {
+  return postGuild<{ left: boolean }>({ action: 'leave', ...params });
 }

@@ -1,6 +1,7 @@
 import { Account, RpcProvider, Contract } from 'starknet';
 import { BurnerManager } from '@dojoengine/create-burner';
 import { dojoConfig, getKatanaAccount } from './config';
+import { debug } from '../lib/log';
 
 export interface DojoContext {
   provider: RpcProvider;
@@ -15,9 +16,9 @@ export async function setupDojo(): Promise<DojoContext> {
     return dojoContext;
   }
 
-  console.log('🎮 Setting up Dojo...');
-  console.log('RPC URL:', dojoConfig.rpcUrl);
-  console.log('World Address:', dojoConfig.worldAddress);
+  debug('Setting up Dojo...');
+  debug('RPC URL:', dojoConfig.rpcUrl);
+  debug('World Address:', dojoConfig.worldAddress);
 
   // Initialize RPC provider
   const provider = new RpcProvider({
@@ -47,7 +48,7 @@ export async function setupDojo(): Promise<DojoContext> {
     burnerManager,
   };
 
-  console.log('✅ Dojo setup complete!');
+  debug('Dojo setup complete!');
   return dojoContext;
 }
 
@@ -61,9 +62,9 @@ export function getDojoContext(): DojoContext {
 export async function createBurnerAccount(): Promise<Account> {
   const { burnerManager } = getDojoContext();
 
-  console.log('🔥 Creating burner account...');
+  debug('Creating burner account...');
   const burner = await burnerManager.create();
-  console.log('✅ Burner account created:', burner.address);
+  debug('Burner account created:', burner.address);
 
   return burner as any;
 }
@@ -76,6 +77,6 @@ export async function getBurnerAccounts(): Promise<Account[]> {
 export async function clearBurnerAccounts(): Promise<void> {
   const { burnerManager } = getDojoContext();
   await burnerManager.clear();
-  console.log('🗑️ Burner accounts cleared');
+  debug('Burner accounts cleared');
 }
 

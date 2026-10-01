@@ -5,7 +5,7 @@ import { useGameStore } from '../store/gameStore';
 import { calculateStars, calculateGrade, DIFFICULTY_ORDER, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getMaxLevelForEra, getMovesNeededForThreeStars, getTimeMedal, getTotalLevelCount } from '../types';
 import { hapticNotification } from '../telegram/telegram';
 import { isScoreEligibleForNFT } from '../cartridge/config';
-import { fetchPlayerStats } from '../lib/api';
+import { createDuel, fetchPlayerStats } from '../lib/api';
 import { loadGhostReplay } from '../store/ghostReplay';
 import MedalBadge from './MedalBadge';
 
@@ -49,6 +49,8 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [playerRank, setPlayerRank] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const [duelCode, setDuelCode] = useState<string | null>(null);
+  const [duelBusy, setDuelBusy] = useState(false);
 
   useEffect(() => {
     hapticNotification('success');
@@ -59,7 +61,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     if (!scoreSubmitted || !telegramUser) return;
     const timer = setTimeout(async () => {
       try {
-        const stats = await fetchPlayerStats(telegramUser.id);
+        const stats = await fetchPlayerStats(telegramUser);
         if (stats) setPlayerRank(stats.rank);
       } catch { /* optional */ }
     }, 1500);
@@ -126,6 +128,54 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     urban:  { btn: 'from-[#00ff88] to-[#00e5ff] hover:from-[#00e5ff]', label: 'text-[#00ff88]', badge: 'bg-[#00ff88]/10 border-[#00ff88]/25 text-[#00ff88]' },
   }[theme];
 
+  /**
+   * Turn the run just finished into a 24-hour duel on the same board.
+   *
+   * Offered at the moment of a win because that is the only moment someone
+   * actually wants to be seen — a share prompt on the main menu converts at a
+   * fraction of this.
+   */
+  const handleChallenge = async () => {
+    if (!telegramUser || currentEra === null) return;
+    setDuelBusy(true);
+    try {
+      const duel = await createDuel({
+        telegramUser: {
+          id: telegramUser.id,
+          username: telegramUser.username,
+          first_name: telegramUser.first_name,
+          last_name: telegramUser.last_name,
+        },
+        difficulty: currentEra,
+        level: currentLevel,
+        seed: Math.floor(Math.random() * 2_000_000_000),
+        displayName: playerName || telegramUser.first_name || 'Curator',
+      });
+      setDuelCode(duel.id);
+
+      const text =
+        `⚔️ I scored ${(currentGame?.score ?? 0).toLocaleString()} on this board. ` +
+        `You have 24 hours to beat it.\n\nDuel code: ${duel.id}\n` +
+        `https://t.me/enter_memorabilia_musem_bot${telegramUser.id ? `?start=ref_${telegramUser.id}` : ''}`;
+
+      if (navigator.share) {
+        try {
+          await navigator.share({ text });
+          return;
+        } catch { /* cancelled */ }
+      }
+      const tg = (window as any).Telegram?.WebApp;
+      const url = `https://t.me/share/url?url=${encodeURIComponent('https://t.me/enter_memorabilia_musem_bot')}&text=${encodeURIComponent(text)}`;
+      if (tg?.openTelegramLink) tg.openTelegramLink(url);
+      else await navigator.clipboard.writeText(text).catch(() => window.open(url, '_blank'));
+    } catch {
+      // A failed duel must not block the win screen; the code stays null and
+      // the button returns to its resting state.
+    } finally {
+      setDuelBusy(false);
+    }
+  };
+
   const handleShare = async () => {
     const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
     const challengeLine =
@@ -138,7 +188,7 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
       `${starStr} I scored ${currentGame.score.toLocaleString()} pts on Memorabilia!\n` +
       `${diffLabel} · ${currentGame.moves} moves · ${formatTime(elapsedTime)}\n` +
       `${challengeLine ? `${challengeLine}\n` : ''}` +
-      `Play now 👉 https://t.me/enter_memorabilia_musem_bot`;
+      `Play now 👉 https://t.me/enter_memorabilia_musem_bot${telegramUser?.id ? `?start=ref_${telegramUser.id}` : ''}`;
 
     // Try native Web Share first (works in Telegram WebApp on mobile)
     if (navigator.share) {
@@ -149,7 +199,8 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
     }
 
     // Telegram forward link fallback
-    const tgUrl = `https://t.me/share/url?url=https://t.me/enter_memorabilia_musem_bot&text=${encodeURIComponent(shareText)}`;
+    const inviteUrl = `https://t.me/enter_memorabilia_musem_bot${telegramUser?.id ? `?start=ref_${telegramUser.id}` : ''}`;
+    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(shareText)}`;
     const tg = (window as any).Telegram?.WebApp;
     if (tg?.openTelegramLink) {
       tg.openTelegramLink(tgUrl);
@@ -576,6 +627,27 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
                     <span>{`Next Level: ${nextLevelConfig?.label ?? 'Continue'}`}</span>
                   </motion.button>
                 )}
+
+                <motion.button
+                  onClick={handleChallenge}
+                  disabled={duelBusy}
+                  className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(232,180,74,0.18), rgba(232,180,74,0.08))',
+                    border: '1px solid rgba(232,180,74,0.42)',
+                    color: '#f5cd6d',
+                  }}
+                  whileTap={{ scale: 0.97 }}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.85 }}
+                >
+                  {duelCode ? (
+                    <><span>⚔️</span><span>Duel code {duelCode} — share it</span></>
+                  ) : (
+                    <><span>⚔️</span><span>{duelBusy ? 'Opening duel…' : 'Challenge a friend'}</span></>
+                  )}
+                </motion.button>
 
                 <div className="flex gap-3">
                   <motion.button

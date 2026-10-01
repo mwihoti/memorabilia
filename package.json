@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "build": "cd frontend && npm install && npm run build"
+    "build": "cd frontend && npm install && npm run build",
+    "migrate": "node scripts/migrate.mjs",
+    "typecheck": "tsc --noEmit -p api/tsconfig.json"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

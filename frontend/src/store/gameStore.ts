@@ -21,8 +21,10 @@ import { checkAndUnlockAchievements } from './achievementStore';
 import { loadStreak, recordGamePlayed } from './streakStore';
 import { getDailyChallengeConfig, getWeeklyChallengeConfig, saveDailyChallenge, saveWeeklyChallenge } from './dailyChallenge';
 import { buildReplay, saveGhostReplayIfBest } from './ghostReplay';
+import { debug } from '../lib/log';
 
-export type Theme = 'museum' | 'nature' | 'urban';
+/** Only one theme ships now; the type stays so the store shape is unchanged. */
+export type Theme = 'museum';
 
 type ChallengeMode = 'standard' | 'daily' | 'weekly' | 'room';
 
@@ -169,6 +171,10 @@ interface GameStore {
   boardRotationDeg: number;
   verifiedRunId: number | null;
   activeChallengeRoomId: string | null;
+  /** Relic ids awarded by the server on the last run — drives the win-screen toast. */
+  serverRelics: string[];
+  /** Season points the last run was worth, as scored by the server. */
+  seasonPointsEarned: number;
 
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
@@ -281,6 +287,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   boardRotationDeg: 0,
   verifiedRunId: null,
   activeChallengeRoomId: null,
+  serverRelics: [],
+  seasonPointsEarned: 0,
 
   // Setters
   setTelegramUser: (user) => set({ telegramUser: user }),
@@ -294,7 +302,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ isWalletConnecting: true });
 
     try {
-      console.log('🔌 Connecting wallet...');
+      debug('Connecting wallet...');
       const result = await cartridgeController.connect();
 
       set({
@@ -304,7 +312,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         isWalletConnecting: false,
       });
 
-      console.log('✅ Wallet connected:', result.address);
+      debug('Wallet connected:', result.address);
     } catch (error) {
       console.error('❌ Failed to connect wallet:', error);
       set({ isWalletConnecting: false });
@@ -314,7 +322,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   disconnectWallet: async () => {
     try {
-      console.log('🔌 Disconnecting wallet...');
+      debug('Disconnecting wallet...');
       await cartridgeController.disconnect();
 
       set({
@@ -325,7 +333,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         mintError: null,
       });
 
-      console.log('✅ Wallet disconnected');
+      debug('Wallet disconnected');
     } catch (error) {
       console.error('❌ Failed to disconnect wallet:', error);
       throw error;
@@ -349,7 +357,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ isMinting: true, mintError: null, mintTxHash: null });
 
     try {
-      console.log('🎨 Minting NFT for score:', currentGame.score);
+      debug('Minting NFT for score:', currentGame.score);
 
       const result = await mintScoreNFT({
         recipient: walletAddress,
@@ -365,7 +373,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           mintTxHash: result.transactionHash || null,
           mintError: null,
         });
-        console.log('✅ NFT minted successfully!', result.transactionHash);
+        debug('NFT minted successfully!', result.transactionHash);
       } else {
         set({
           isMinting: false,
@@ -393,7 +401,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       // Check if we're in demo mode (no game controller)
       if (!gameController) {
-        console.log('🎮 Starting game in DEMO MODE');
+        debug('Starting game in DEMO MODE');
 
         // Create demo game
         const newGame = createDemoGame(difficulty);
@@ -410,7 +418,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
 
       // Blockchain mode
-      console.log('⛓️ Starting game on blockchain');
+      debug('Starting game on blockchain');
       const gameId = await gameController.startGame(difficulty);
       
       // Get era-specific emojis for this game
@@ -717,7 +725,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const elapsedTime = Math.floor((completedAt - finalGame.started_at) / 1000);
             const playerName = storedName || telegramUser.first_name || 'Anonymous Player';
 
-            console.log('🎯 Game Completed - Saving Score:', {
+            debug('Game Completed - Saving Score:', {
               telegramId: telegramUser.id,
               playerName: playerName,
               score: get().currentGame?.score ?? finalGame.score,
@@ -757,7 +765,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
               runId: get().verifiedRunId,
             })
               .then((result) => {
-                console.log(`✅ Score saved to Neon — Rank #${result.rank} of ${result.totalPlayers}${result.isNewBest ? ' (new personal best!)' : ''}`);
+                debug(`Score saved — rank #${result.rank} of ${result.totalPlayers}${result.isNewBest ? ' (new personal best)' : ''}`);
+
+                // The server is authoritative for streaks, relics and power-up
+                // charges — it computes them from verified numbers. Adopt what
+                // it returns rather than trusting the local copy.
+                const rewards = result.rewards;
+                if (rewards) {
+                  set((state) => ({
+                    streak: {
+                      ...state.streak,
+                      currentStreak: rewards.streak.current,
+                      longestStreak: rewards.streak.longest,
+                      lastPlayedDate: rewards.streak.lastDate ?? state.streak.lastPlayedDate,
+                    },
+                    hintCharges: state.hintCharges + rewards.granted.hint,
+                    freezeCharges: state.freezeCharges + rewards.granted.freeze,
+                    multiplierCharges: state.multiplierCharges + rewards.granted.boost,
+                    serverRelics: rewards.relicsEarned,
+                    seasonPointsEarned: rewards.seasonPoints,
+                  }));
+                }
+
                 const roomId = get().activeChallengeRoomId;
                 if (roomId) {
                   submitChallengeRoomResult({
@@ -805,7 +834,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 });
               });
 
-            console.log('✅ Score saved to player dashboard');
+            debug('Score saved to player dashboard');
           } else {
             console.warn('⚠️ No telegram user found, score not saved');
           }

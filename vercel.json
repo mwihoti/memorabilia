@@ -4,19 +4,46 @@
   "installCommand": "npm install",
   "functions": {
     "api/**/*.ts": {
-      "maxDuration": 10
+      "maxDuration": 60
     }
   },
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "ALLOWALL" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
+        {
+          "key": "X-Frame-Options",
+          "value": "ALLOWALL"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron?job=daily-push",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron?job=weekly-rollover",
+      "schedule": "5 0 * * 1"
+    },
+    {
+      "path": "/api/cron?job=boss-rotate",
+      "schedule": "0 17 * * 5"
+    },
+    {
+      "path": "/api/cron?job=duel-settle",
+      "schedule": "15 * * * *"
     }
   ]
 }

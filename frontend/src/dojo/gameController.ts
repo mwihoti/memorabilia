@@ -2,6 +2,7 @@ import { Account, CallData, hash } from 'starknet';
 import { getDojoContext } from './setup';
 import { CONTRACTS, METHODS } from './config';
 import { GameState, Difficulty, Card } from '../types';
+import { debug } from '../lib/log';
 
 export class GameController {
   private account: Account;
@@ -16,7 +17,7 @@ export class GameController {
    * Start a new game
    */
   async startGame(difficulty: Difficulty): Promise<number> {
-    console.log(`🎮 Starting ${Difficulty[difficulty]} game...`);
+    debug(`Starting ${Difficulty[difficulty]} game...`);
 
     try {
       const tx = await this.account.execute({
@@ -25,14 +26,14 @@ export class GameController {
         calldata: CallData.compile([difficulty]),
       });
 
-      console.log('Transaction hash:', tx.transaction_hash);
+      debug('Transaction hash:', tx.transaction_hash);
       
       const receipt = await this.account.waitForTransaction(tx.transaction_hash);
-      console.log('✅ Game started!', receipt);
+      debug('Game started!', receipt);
 
       // Extract game_id from events
       const gameId = this.extractGameIdFromReceipt(receipt);
-      console.log('Game ID:', gameId);
+      debug('Game ID:', gameId);
 
       return gameId;
     } catch (error) {
@@ -45,7 +46,7 @@ export class GameController {
    * Flip a card
    */
   async flipCard(gameId: number, cardIndex: number): Promise<void> {
-    console.log(`🃏 Flipping card ${cardIndex} in game ${gameId}...`);
+    debug(`🃏 Flipping card ${cardIndex} in game ${gameId}...`);
 
     try {
       const tx = await this.account.execute({
@@ -55,7 +56,7 @@ export class GameController {
       });
 
       await this.account.waitForTransaction(tx.transaction_hash);
-      console.log('✅ Card flipped!');
+      debug('Card flipped!');
     } catch (error) {
       console.error('❌ Failed to flip card:', error);
       throw error;
@@ -66,7 +67,7 @@ export class GameController {
    * Check if two flipped cards match
    */
   async checkMatch(gameId: number): Promise<boolean> {
-    console.log(`🔍 Checking match for game ${gameId}...`);
+    debug(`Checking match for game ${gameId}...`);
 
     try {
       const tx = await this.account.execute({
@@ -76,11 +77,11 @@ export class GameController {
       });
 
       const receipt = await this.account.waitForTransaction(tx.transaction_hash);
-      console.log('✅ Match checked!');
+      debug('Match checked!');
 
       // Extract match result from events
       const isMatch = this.extractMatchResultFromReceipt(receipt);
-      console.log('Is match:', isMatch);
+      debug('Is match:', isMatch);
 
       return isMatch;
     } catch (error) {
@@ -93,7 +94,7 @@ export class GameController {
    * Abandon current game
    */
   async abandonGame(gameId: number): Promise<void> {
-    console.log(`🚪 Abandoning game ${gameId}...`);
+    debug(`Abandoning game ${gameId}...`);
 
     try {
       const tx = await this.account.execute({
@@ -103,7 +104,7 @@ export class GameController {
       });
 
       await this.account.waitForTransaction(tx.transaction_hash);
-      console.log('✅ Game abandoned!');
+      debug('Game abandoned!');
     } catch (error) {
       console.error('❌ Failed to abandon game:', error);
       throw error;
@@ -114,7 +115,7 @@ export class GameController {
    * Get game state (this would typically query Torii indexer)
    */
   async getGameState(gameId: number): Promise<GameState | null> {
-    console.log(`📊 Getting game state for ${gameId}...`);
+    debug(`Getting game state for ${gameId}...`);
 
     try {
       // In a real implementation, this would query the Torii indexer

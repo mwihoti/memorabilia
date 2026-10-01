@@ -6,6 +6,7 @@
  */
 
 import { CARTRIDGE_CONFIG } from './config';
+import { debug } from '../lib/log';
 
 // Import Cartridge Controller from npm package
 // Note: This will be dynamically imported to avoid build issues
@@ -31,10 +32,10 @@ async function loadCartridgeController(): Promise<void> {
     // Try to import from npm package
     const module = await import('@cartridge/controller');
     CartridgeControllerClass = (module as any).CartridgeController || module.default;
-    console.log('✅ Cartridge Controller loaded from npm package');
+    debug('Cartridge Controller loaded from npm package');
   } catch (error) {
     console.error('❌ Failed to load Cartridge Controller:', error);
-    console.log('💡 Make sure @cartridge/controller is installed: npm install @cartridge/controller');
+    debug('Make sure @cartridge/controller is installed: npm install @cartridge/controller');
     throw new Error('Cartridge Controller package not found. Please install it with: npm install @cartridge/controller');
   }
 }
@@ -80,7 +81,7 @@ class CartridgeControllerManager {
         colorMode: 'dark',
       });
 
-      console.log('✅ Cartridge Controller initialized');
+      debug('Cartridge Controller initialized');
     } catch (error) {
       console.error('❌ Failed to initialize Cartridge Controller:', error);
       throw error;
@@ -100,10 +101,10 @@ class CartridgeControllerManager {
     }
 
     try {
-      console.log('🔌 Connecting wallet...');
+      debug('Connecting wallet...');
       const result = await this.controller.connect();
       
-      console.log('✅ Wallet connected:', result.address);
+      debug('Wallet connected:', result.address);
       
       return {
         address: result.address,
@@ -124,9 +125,9 @@ class CartridgeControllerManager {
     }
 
     try {
-      console.log('🔌 Disconnecting wallet...');
+      debug('Disconnecting wallet...');
       await this.controller.disconnect();
-      console.log('✅ Wallet disconnected');
+      debug('Wallet disconnected');
     } catch (error) {
       console.error('❌ Failed to disconnect wallet:', error);
       throw error;

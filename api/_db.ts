@@ -1,123 +1,75 @@
 import { neon } from '@neondatabase/serverless';
+import { MIGRATIONS, MIGRATION_TABLE, LATEST_MIGRATION } from './_schema';
 
 const sql = neon(process.env.DATABASE_URL!);
 
-let initialized = false;
+/** Per-instance latch — a warm lambda checks the schema at most once. */
+let schemaReady = false;
 
+/**
+ * Apply any migrations this database has not seen.
+ *
+ * Safe to call concurrently: each migration is wrapped in an advisory lock, so
+ * two cold starts racing will not both run the same DDL.
+ */
+export async function runMigrations(): Promise<number[]> {
+  await sql(MIGRATION_TABLE);
+
+  const rows = (await sql`SELECT id FROM schema_migrations`) as Array<{ id: number }>;
+  const applied = new Set(rows.map((r) => Number(r.id)));
+  const ran: number[] = [];
+
+  for (const migration of MIGRATIONS) {
+    if (applied.has(migration.id)) continue;
+
+    // 0x4d454d is 'MEM' — an arbitrary namespace for this app's locks.
+    await sql`SELECT pg_advisory_lock(5065037, ${migration.id})`;
+    try {
+      const recheck = (await sql`
+        SELECT id FROM schema_migrations WHERE id = ${migration.id}
+      `) as Array<{ id: number }>;
+      if (recheck.length > 0) continue;
+
+      for (const statement of migration.statements) {
+        await sql(statement);
+      }
+      await sql`
+        INSERT INTO schema_migrations (id, name)
+        VALUES (${migration.id}, ${migration.name})
+        ON CONFLICT (id) DO NOTHING
+      `;
+      ran.push(migration.id);
+    } finally {
+      await sql`SELECT pg_advisory_unlock(5065037, ${migration.id})`;
+    }
+  }
+
+  return ran;
+}
+
+/**
+ * Called by every endpoint. Normally one cheap SELECT; only migrates when the
+ * database is genuinely behind, which on a deployed system is never, because
+ * `scripts/migrate.mjs` has already run.
+ */
 export async function ensureDb() {
-  if (initialized) return;
+  if (schemaReady) return;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS users (
-      telegram_id   BIGINT PRIMARY KEY,
-      username      VARCHAR(255),
-      first_name    VARCHAR(255),
-      last_name     VARCHAR(255),
-      wallet_address VARCHAR(255),
-      created_at    TIMESTAMPTZ DEFAULT NOW(),
-      last_active   TIMESTAMPTZ DEFAULT NOW(),
-      total_games   INT DEFAULT 0,
-      total_wins    INT DEFAULT 0,
-      best_score    INT DEFAULT 0,
-      average_score INT DEFAULT 0
-    )
-  `;
+  try {
+    const rows = (await sql`
+      SELECT COALESCE(MAX(id), 0) AS version FROM schema_migrations
+    `) as Array<{ version: number }>;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS game_sessions (
-      id           SERIAL PRIMARY KEY,
-      telegram_id  BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-      run_id       INT,
-      score        INT NOT NULL,
-      difficulty   SMALLINT NOT NULL,
-      level        INT NOT NULL DEFAULT 1,
-      moves        INT NOT NULL,
-      time_seconds INT NOT NULL,
-      stars        SMALLINT DEFAULT 1,
-      verified     BOOLEAN NOT NULL DEFAULT FALSE,
-      played_at    TIMESTAMPTZ DEFAULT NOW()
-    )
-  `;
+    if (Number(rows[0]?.version ?? 0) >= LATEST_MIGRATION) {
+      schemaReady = true;
+      return;
+    }
+  } catch {
+    // schema_migrations itself is missing — fall through and build everything.
+  }
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS player_progress (
-      telegram_id   BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-      era           SMALLINT NOT NULL,
-      level         INT NOT NULL,
-      completed     BOOLEAN NOT NULL DEFAULT FALSE,
-      best_score    INT NOT NULL DEFAULT 0,
-      best_time     INT NOT NULL DEFAULT 0,
-      best_medal    VARCHAR(16) NOT NULL DEFAULT 'none',
-      stars         SMALLINT NOT NULL DEFAULT 0,
-      completed_at  TIMESTAMPTZ,
-      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (telegram_id, era, level)
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS run_sessions (
-      id             SERIAL PRIMARY KEY,
-      telegram_id    BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-      difficulty     SMALLINT NOT NULL,
-      level          INT NOT NULL,
-      challenge_mode VARCHAR(16) NOT NULL DEFAULT 'standard',
-      seed           INT NOT NULL,
-      started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      completed_at   TIMESTAMPTZ,
-      verification_status VARCHAR(16) NOT NULL DEFAULT 'pending'
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS telemetry_events (
-      id          SERIAL PRIMARY KEY,
-      type        VARCHAR(16) NOT NULL,
-      source      VARCHAR(64) NOT NULL,
-      message     TEXT NOT NULL,
-      metadata    JSONB,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS challenge_rooms (
-      id              VARCHAR(24) PRIMARY KEY,
-      host_telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-      difficulty      SMALLINT NOT NULL,
-      level           INT NOT NULL,
-      seed            INT NOT NULL,
-      status          VARCHAR(16) NOT NULL DEFAULT 'lobby',
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      started_at      TIMESTAMPTZ,
-      completed_at    TIMESTAMPTZ
-    )
-  `;
-
-  await sql`
-    CREATE TABLE IF NOT EXISTS challenge_room_participants (
-      room_id            VARCHAR(24) NOT NULL REFERENCES challenge_rooms(id) ON DELETE CASCADE,
-      telegram_id        BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-      display_name       VARCHAR(255) NOT NULL,
-      status             VARCHAR(16) NOT NULL DEFAULT 'joined',
-      joined_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      finished_at        TIMESTAMPTZ,
-      best_time_seconds  INT,
-      best_moves         INT,
-      best_score         INT,
-      verified           BOOLEAN NOT NULL DEFAULT FALSE,
-      PRIMARY KEY (room_id, telegram_id)
-    )
-  `;
-
-  await sql`CREATE INDEX IF NOT EXISTS idx_sessions_telegram ON game_sessions(telegram_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_sessions_played_at ON game_sessions(played_at DESC)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_users_best_score ON users(best_score DESC)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_progress_telegram ON player_progress(telegram_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_run_sessions_telegram ON run_sessions(telegram_id, started_at DESC)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_challenge_room_participants_room ON challenge_room_participants(room_id)`;
-
-  initialized = true;
+  await runMigrations();
+  schemaReady = true;
 }
 
 export { sql };

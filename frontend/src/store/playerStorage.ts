@@ -1,5 +1,6 @@
 // Local storage for player scores and stats in demo mode
 import { DIFFICULTY_ORDER, GameState, LeaderboardEntry, LevelProgress, Difficulty, TimeMedal, RelicReward, getDifficultyMeta } from '../types';
+import { debug } from '../lib/log';
 
 const STORAGE_KEY = 'memorabilia_player_data';
 const LEADERBOARD_KEY = 'memorabilia_leaderboard';
@@ -87,7 +88,7 @@ export function addGameScore(
         lastPlayed: Date.now(),
       };
       players.push(player);
-      console.log('✨ New player created:', playerName, 'ID:', telegramId);
+      debug('New player created:', playerName, 'ID:', telegramId);
     } else {
       // Existing player
       player = players[playerIndex];
@@ -102,16 +103,16 @@ export function addGameScore(
         (player.averageScore * (player.totalGames - 1) + score) / player.totalGames
       );
       player.lastPlayed = Date.now();
-      console.log('📊 Player updated:', playerName, 'Total games:', player.totalGames);
+      debug('Player updated:', playerName, 'Total games:', player.totalGames);
     }
 
     // Save all players
     saveAllPlayers(players);
-    console.log('💾 Player data saved to localStorage');
+    debug('Player data saved to localStorage');
 
     // Add to leaderboard
     addToLeaderboard(telegramId, playerName, score, difficulty, moves, timeSeconds);
-    console.log('🏆 Score added to leaderboard');
+    debug('Score added to leaderboard');
 
     return player;
   } catch (error) {
@@ -163,7 +164,7 @@ export function getAllPlayers(): LocalPlayerData[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     const players = data ? JSON.parse(data) : [];
-    console.log('📂 getAllPlayers() - Retrieved', players.length, 'players from localStorage:', players);
+    debug('getAllPlayers() - Retrieved', players.length, 'players from localStorage:', players);
     return players;
   } catch (error) {
     console.error('Failed to get players:', error);

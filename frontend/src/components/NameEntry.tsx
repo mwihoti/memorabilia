@@ -232,7 +232,7 @@ export default function NameEntry({ onContinue }: NameEntryProps) {
         className="mt-6 text-center text-[0.68rem]"
         style={{ color: 'var(--mu-faint)' }}
       >
-        Five eras · 350 levels · verified scores
+        Five eras · 400 levels · verified scores
       </motion.p>
     </div>
   );

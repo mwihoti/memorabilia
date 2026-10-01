@@ -91,7 +91,7 @@ export default function FarewellScreen({ onPlayAgain }: FarewellScreenProps) {
         >
           <div className="flex items-center gap-3">
             <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white
-              ${theme === 'museum' ? 'bg-amber-600' : theme === 'nature' ? 'bg-green-600' : 'bg-[#00ff88]/20 border border-[#00ff88]/50'}`}>
+              bg-amber-600`}>
               {displayName[0]?.toUpperCase() ?? '?'}
             </div>
             <div>

@@ -7,6 +7,7 @@
 import { cartridgeController } from './CartridgeController';
 import { NFT_CONFIG, isScoreEligibleForNFT } from './config';
 import { Contract } from 'starknet';
+import { debug } from '../lib/log';
 
 /**
  * NFT Minting Result
@@ -65,7 +66,7 @@ export async function mintScoreNFT(params: NFTMintParams): Promise<NFTMintResult
       };
     }
 
-    console.log('🎨 Minting NFT...', {
+    debug('Minting NFT...', {
       recipient: formattedRecipient,
       score: params.score,
       timestamp: params.timestamp,
@@ -90,10 +91,10 @@ export async function mintScoreNFT(params: NFTMintParams): Promise<NFTMintResult
     );
 
     // Wait for transaction confirmation
-    console.log('⏳ Waiting for transaction confirmation...');
+    debug('⏳ Waiting for transaction confirmation...');
     await account.waitForTransaction(result.transaction_hash);
 
-    console.log('✅ NFT minted successfully!', result.transaction_hash);
+    debug('NFT minted successfully!', result.transaction_hash);
 
     return {
       success: true,

@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, ensureDb } from './_db';
-import { verifyTelegramAuth } from './_auth';
+import { requireTelegramUser, AuthError } from './_auth';
 import { getClientKey, rateLimit } from './_rateLimit';
 import { logApiError } from './_telemetry';
 import { verifyReplaySubmission } from '../shared/gameRules';
+import { applyRunRewards } from './_rewards';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -49,22 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
-    let verifiedUser = telegramUser;
-
-    if (botToken) {
-      if (!initData) return res.status(401).json({ message: 'Missing Telegram verification data' });
-      const auth = verifyTelegramAuth(initData, botToken);
-      if (!auth.valid || !auth.user || auth.user.id !== telegramUser.id) {
-        return res.status(401).json({ message: `Unauthorized: ${auth.reason ?? 'verification failed'}` });
-      }
-      verifiedUser = {
-        id: auth.user.id,
-        username: auth.user.username,
-        first_name: auth.user.first_name || telegramUser.first_name,
-        last_name: auth.user.last_name,
-      };
-    }
+    const verifiedUser = await requireTelegramUser({ telegramUser, initData });
 
     const tid = BigInt(verifiedUser.id);
     const runRows = runId
@@ -142,6 +128,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       WHERE id = ${run.id}
     `;
 
+    const rewards = await applyRunRewards({
+      telegramId: tid,
+      era: Number(run.difficulty) as 1 | 2 | 3 | 4 | 5,
+      level: Number(run.level),
+      score: verifiedScore,
+      stars: verifiedStars,
+      timeSeconds: verifiedTimeSeconds,
+      mismatches: verification.mismatches,
+      maxCombo: verification.maxCombo,
+      medal: String(req.body?.medal ?? 'none'),
+      isDailyChallenge: String(run.challenge_mode) === 'daily',
+    });
+
     const rankResult = await sql`
       SELECT COUNT(*)::int AS rank
       FROM users
@@ -163,8 +162,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       verifiedMoves,
       verifiedTimeSeconds,
       adjusted: verifiedScore !== score || verifiedMoves !== moves || verifiedTimeSeconds !== timeSeconds || verifiedStars !== stars,
+      rewards,
     });
   } catch (error: any) {
+    if (error instanceof AuthError) return res.status(401).json({ message: error.message });
     await logApiError('scores', error);
     return res.status(500).json({ message: error.message || 'Internal server error' });
   }

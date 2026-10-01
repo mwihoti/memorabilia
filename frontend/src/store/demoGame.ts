@@ -50,17 +50,18 @@ export function getEmojisForDifficulty(difficulty: Difficulty): string[] {
 
 // ── Shuffle ───────────────────────────────────────────────────────────────────
 
-// Fisher-Yates with crypto random for stronger randomness
+/**
+ * Fisher-Yates, unbiased.
+ *
+ * The previous version drew `j` from `(Math.random() + Math.random()) / 2`,
+ * which is a triangular distribution — it clustered swaps toward the middle and
+ * produced a measurably non-uniform shuffle. A second "corrective" pass made it
+ * worse. Use `shuffleWithRng` when the order has to be reproducible from a seed.
+ */
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
-    // Mix Math.random with a time-seeded offset for extra variance
-    const j = Math.floor((Math.random() + Math.random()) / 2 * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  // Second pass — double-shuffle to ensure distribution
-  for (let i = 0; i < shuffled.length; i++) {
-    const j = Math.floor(Math.random() * shuffled.length);
+    const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;

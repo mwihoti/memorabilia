@@ -47,3 +47,6 @@ venv/
 *.bak
 *.cache
 
+
+# Test compilation output
+frontend/.test-dist/

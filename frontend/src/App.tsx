@@ -10,13 +10,13 @@ import { resolveStartupIntroState } from '../../shared/startupIntro.js';
 // Components
 import LoadingScreen from './components/LoadingScreen';
 import NameEntry from './components/NameEntry';
-import DifficultySelector from './components/DifficultySelector';
 import GameBoard from './components/GameBoard';
 import WinModal from './components/WinModal';
 import AppShell, { NavKey } from './components/AppShell';
-import Leaderboard from './components/Leaderboard';
 import TelegramRequired from './components/TelegramRequired';
 import UserDashboard from './components/UserDashboard';
+import Activities from './components/Activities';
+import Collection from './components/Collection';
 import FarewellScreen from './components/FarewellScreen';
 import MuseumBackground from './components/MuseumBackground';
 import LevelSelector from './components/LevelSelector';
@@ -25,8 +25,9 @@ import GhostReplayModal from './components/GhostReplayModal';
 import IntroCinematic from './components/IntroCinematic';
 import ChallengeRoom from './components/ChallengeRoom';
 import { ChallengeRoom as ChallengeRoomData, createChallengeRoom } from './lib/api';
+import { debug } from './lib/log';
 
-type Screen = 'loading' | 'name-entry' | 'difficulty' | 'level-select' | 'challenge-room' | 'game' | 'leaderboard' | 'dashboard' | 'farewell';
+type Screen = 'loading' | 'name-entry' | 'level-select' | 'challenge-room' | 'game' | 'activities' | 'collection' | 'dashboard' | 'farewell';
 
 function buildCleanRoomUrl(roomId: string): string {
   const url = new URL(window.location.origin + window.location.pathname);
@@ -90,7 +91,7 @@ function App() {
   useEffect(() => {
     async function initialize() {
       try {
-        console.log('🚀 Initializing Memorabilia...');
+        debug('Initializing Memorabilia...');
 
         // Initialize Telegram — get real user, no fallback
         const user = initTelegramApp() ?? getTelegramUser();
@@ -106,12 +107,12 @@ function App() {
         const isDemoMode = !worldAddress || worldAddress === '0x' || worldAddress === '';
 
         if (isDemoMode) {
-          console.log('🎮 Running in DEMO MODE (no blockchain required)');
+          debug('Running in DEMO MODE (no blockchain required)');
           setIsInitializing(false);
           const savedName = localStorage.getItem('memorabilia_player_name');
           setScreen(savedName ? (pendingRoomId ? 'challenge-room' : 'level-select') : 'name-entry');
         } else {
-          console.log('⛓️ Running in BLOCKCHAIN MODE');
+          debug('Running in BLOCKCHAIN MODE');
 
           // Setup Dojo
           await setupDojo();
@@ -124,7 +125,7 @@ function App() {
           const controller = createGameController(burnerAccount);
           setGameController(controller);
 
-          console.log('✅ Blockchain initialization complete!');
+          debug('Blockchain initialization complete!');
           setIsInitializing(false);
           const savedName = localStorage.getItem('memorabilia_player_name');
           setScreen(savedName ? (pendingRoomId ? 'challenge-room' : 'level-select') : 'name-entry');
@@ -199,8 +200,6 @@ function App() {
     setGhostReplayData(null);
   };
 
-  const handleShowLeaderboard = () => setScreen('leaderboard');
-  const handleShowDashboard = () => setScreen('dashboard');
 
   const handleBackToDifficulty = () => {
     if (currentGame) {
@@ -227,10 +226,6 @@ function App() {
   const handleLevelStart = async (era: Difficulty, level: number, isDailyChallenge: boolean) => {
     await startLevelGame(era, level, isDailyChallenge);
     setScreen('game');
-  };
-
-  const handleSwitchToLevels = () => {
-    setScreen('level-select');
   };
 
   const handleCreateChallenge = async (era: Difficulty, level: number) => {
@@ -295,14 +290,31 @@ function App() {
 
   const navActive: NavKey =
     screen === 'dashboard' ? 'dashboard'
-    : screen === 'leaderboard' ? 'hall'
+    : screen === 'activities' ? 'activities'
+    : screen === 'collection' ? 'collection'
     : 'museum';
 
   const handleNavigate = (key: NavKey) => {
-    if (key === 'dashboard') return handleShowDashboard();
-    if (key === 'hall') return handleShowLeaderboard();
+    if (key === 'dashboard') return setScreen('dashboard');
+    if (key === 'activities') return setScreen('activities');
+    if (key === 'collection') return setScreen('collection');
     // "Enter Museum" from inside a game confirms before discarding the run.
     return handleBackToDifficulty();
+  };
+
+  const handlePlayBoss = async (era: Difficulty, level: number) => {
+    await startLevelGame(era, level, false);
+    setScreen('game');
+  };
+
+  const handlePlayDuel = async (duel: { id: string; era: number; level: number; seed: number }) => {
+    await startChallengeRoomGame({
+      id: duel.id,
+      difficulty: duel.era as Difficulty,
+      level: duel.level,
+      seed: duel.seed,
+    });
+    setScreen('game');
   };
 
   // Name entry owns the whole viewport — no chrome, no nav.
@@ -353,14 +365,13 @@ function App() {
           <ChallengeRoom roomId={activeRoomId} onBack={handleLeaveRoom} onPlay={handleOpenRoom} />
         )}
 
-        {/* Legacy difficulty screen — kept for blockchain mode backward compat */}
-        {screen === 'difficulty' && (
-          <DifficultySelector onStart={() => setScreen('game')} onSwitchToLevels={handleSwitchToLevels} />
-        )}
-
         {screen === 'game' && currentGame && !showLevelIntro && <GameBoard />}
 
-        {screen === 'leaderboard' && <Leaderboard onBack={handleBackToDifficulty} />}
+        {screen === 'activities' && (
+          <Activities onPlayBoss={handlePlayBoss} onPlayDuel={handlePlayDuel} />
+        )}
+
+        {screen === 'collection' && <Collection />}
 
         {screen === 'dashboard' && <UserDashboard />}
       </AppShell>
