@@ -30,20 +30,8 @@
   ],
   "crons": [
     {
-      "path": "/api/cron?job=daily-push",
+      "path": "/api/cron?job=tick",
       "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron?job=weekly-rollover",
-      "schedule": "5 0 * * 1"
-    },
-    {
-      "path": "/api/cron?job=boss-rotate",
-      "schedule": "0 17 * * 5"
-    },
-    {
-      "path": "/api/cron?job=duel-settle",
-      "schedule": "15 * * * *"
     }
   ]
 }

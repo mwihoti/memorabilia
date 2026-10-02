@@ -16,7 +16,10 @@ import { getDailyChallengeConfigFromDate, getDifficultyMeta } from '../shared/ga
  *   daily-push       — tell players the day's board is live (09:00 UTC)
  *   weekly-rollover  — crown last week's champion, open the new ladder (Mon 00:05 UTC)
  *   boss-rotate      — open this week's boss window (Fri 17:00 UTC)
- *   duel-settle      — notify both sides of duels whose window just closed (hourly)
+ *   duel-settle      — notify both sides of duels whose window just closed
+ *   tick             — runs whichever of the above are due; this is what the
+ *                      schedule actually calls, so one daily cron covers all
+ *                      four and a missed run self-heals on the next one
  *
  * Guarded by CRON_SECRET: Vercel sends it as a bearer token, and without it
  * this endpoint would let anyone spam every player in the database.
@@ -43,6 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(await bossRotate());
       case 'duel-settle':
         return res.status(200).json(await duelSettle());
+      case 'tick':
+        return res.status(200).json(await tick());
       default:
         return res.status(400).json({ message: `Unknown job: ${job}` });
     }
@@ -83,16 +88,28 @@ async function send(chatId: number, text: string): Promise<boolean> {
  * Telegram rate-limits bulk sends to roughly 30 messages a second. Batching with
  * a pause keeps us under it without needing a queue.
  */
-async function sendBatch(rows: Array<{ chat_id: number; text: string }>) {
-  let sent = 0;
+async function sendBatch(rows: Array<{ chat_id: number; text: string }>): Promise<number[]> {
+  const delivered: number[] = [];
   for (let i = 0; i < rows.length; i += 25) {
     const slice = rows.slice(i, i + 25);
     const results = await Promise.all(slice.map((r) => send(Number(r.chat_id), r.text)));
-    sent += results.filter(Boolean).length;
+    results.forEach((ok, j) => {
+      if (ok) delivered.push(Number(slice[j].chat_id));
+    });
     if (i + 25 < rows.length) await new Promise((r) => setTimeout(r, 1100));
   }
-  return sent;
+  return delivered;
 }
+
+/**
+ * How many players one invocation can reach.
+ *
+ * Telegram caps bulk sends near 30/second, so we batch 25 with a 1.1s pause —
+ * about 1.1s per 25. At a 60s function limit that is ~1300 in theory; 500 keeps
+ * a wide margin for the queries either side. Anyone not reached keeps their old
+ * `last_push_at` and is picked up by the next run.
+ */
+const PUSH_BUDGET = 500;
 
 /* ── Jobs ────────────────────────────────────────────────────────────────── */
 
@@ -117,7 +134,8 @@ async function dailyPush() {
       AND push_enabled = TRUE
       AND last_active > NOW() - INTERVAL '21 days'
       AND (last_push_at IS NULL OR last_push_at < CURRENT_DATE)
-    LIMIT 2000
+    ORDER BY last_active DESC
+    LIMIT ${PUSH_BUDGET}
   `) as any[];
 
   const cleared = clears[0]?.n ?? 0;
@@ -139,18 +157,17 @@ async function dailyPush() {
     };
   });
 
-  const sent = await sendBatch(rows);
+  const delivered = await sendBatch(rows);
 
-  if (targets.length) {
+  // Mark only the players we actually reached. Marking everyone — as this did
+  // originally — silently skips anyone whose send failed until tomorrow.
+  if (delivered.length) {
     await sql`
-      UPDATE users SET last_push_at = NOW()
-      WHERE chat_id IS NOT NULL AND push_enabled = TRUE
-        AND last_active > NOW() - INTERVAL '21 days'
-        AND (last_push_at IS NULL OR last_push_at < CURRENT_DATE)
+      UPDATE users SET last_push_at = NOW() WHERE chat_id = ANY(${delivered})
     `;
   }
 
-  return { job: 'daily-push', targets: targets.length, sent };
+  return { job: 'daily-push', targets: targets.length, sent: delivered.length };
 }
 
 /** Crown last week's leader, then let the new week start empty. */
@@ -183,7 +200,7 @@ async function weeklyRollover() {
     SELECT chat_id FROM users
     WHERE chat_id IS NOT NULL AND push_enabled = TRUE
       AND last_active > NOW() - INTERVAL '21 days'
-    LIMIT 2000
+    LIMIT ${PUSH_BUDGET}
   `) as any[];
 
   const text =
@@ -191,9 +208,9 @@ async function weeklyRollover() {
     `${name} took the week with <b>${Number(champ.best_score).toLocaleString()}</b> points.\n\n` +
     `The ladder has reset. Everyone starts at zero.`;
 
-  const sent = await sendBatch(targets.map((t) => ({ chat_id: t.chat_id, text })));
+  const delivered = await sendBatch(targets.map((t) => ({ chat_id: t.chat_id, text })));
 
-  return { job: 'weekly-rollover', weekKey: lastWeek, crowned: name, sent };
+  return { job: 'weekly-rollover', weekKey: lastWeek, crowned: name, sent: delivered.length };
 }
 
 /** Open a 48-hour boss window, derived from the week key so it never runs out. */
@@ -223,7 +240,7 @@ async function bossRotate() {
     SELECT chat_id FROM users
     WHERE chat_id IS NOT NULL AND push_enabled = TRUE
       AND last_active > NOW() - INTERVAL '21 days'
-    LIMIT 2000
+    LIMIT ${PUSH_BUDGET}
   `) as any[];
 
   const text =
@@ -232,9 +249,9 @@ async function bossRotate() {
     `One board, same for everyone, open for ${BOSS_WINDOW_HOURS} hours.\n\n` +
     `Clear it and the relic is yours.`;
 
-  const sent = await sendBatch(targets.map((t) => ({ chat_id: t.chat_id, text })));
+  const delivered = await sendBatch(targets.map((t) => ({ chat_id: t.chat_id, text })));
 
-  return { job: 'boss-rotate', weekKey, created: true, eventId: inserted[0].id, sent };
+  return { job: 'boss-rotate', weekKey, created: true, eventId: inserted[0].id, sent: delivered.length };
 }
 
 /** Tell both sides when a duel's 24 hours run out. */
@@ -277,4 +294,44 @@ async function duelSettle() {
   }
 
   return { job: 'duel-settle', settled: rooms.length, notified };
+}
+
+/* ── Dispatcher ──────────────────────────────────────────────────────────── */
+
+/**
+ * Run whatever is due.
+ *
+ * Vercel's Hobby plan allows only a couple of cron jobs at daily frequency, so
+ * the schedule calls this once a day rather than scheduling each job
+ * separately. Every job below is idempotent and checks its own precondition, so
+ * a missed day costs nothing and a double run changes nothing.
+ *
+ * On a plan with more cron slots, schedule the four jobs directly instead —
+ * duels would then settle within the hour rather than within the day.
+ */
+async function tick() {
+  const results: Record<string, unknown> = {};
+
+  // Always: cheap, and both self-limit.
+  results.duels = await duelSettle();
+  results.push = await dailyPush();
+
+  // Monday, or any day the previous week was never crowned.
+  const lastWeek = getWeekKey(new Date(getWeekStart().getTime() - 86400000));
+  const crowned = (await sql`
+    SELECT week_key FROM weekly_champions WHERE week_key = ${lastWeek}
+  `) as any[];
+  if (!crowned.length) {
+    results.rollover = await weeklyRollover();
+  }
+
+  // Open a boss window whenever there is not one running.
+  const openBoss = (await sql`
+    SELECT id FROM boss_events WHERE opens_at <= NOW() AND closes_at > NOW() LIMIT 1
+  `) as any[];
+  if (!openBoss.length) {
+    results.boss = await bossRotate();
+  }
+
+  return { job: 'tick', ran: results };
 }
