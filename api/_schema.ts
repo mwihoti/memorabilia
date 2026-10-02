@@ -267,6 +267,30 @@ export const MIGRATIONS: Migration[] = [
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS total_quits INT NOT NULL DEFAULT 0`,
     ],
   },
+
+  {
+    id: 9,
+    name: 'shared-rate-limits-and-room-runs',
+    statements: [
+      // One counter per key, shared by every function instance. The in-memory
+      // map it replaces was per instance, so N warm lambdas allowed N times
+      // the limit.
+      `CREATE TABLE IF NOT EXISTS rate_limits (
+        key      VARCHAR(160) PRIMARY KEY,
+        count    INT NOT NULL,
+        reset_at TIMESTAMPTZ NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at)`,
+      // Ties a verified run to the room it was played in, so a room result is
+      // read from the verified run rather than taken from the client.
+      `ALTER TABLE run_sessions ADD COLUMN IF NOT EXISTS room_id VARCHAR(8)`,
+      // Power-up balances become a spendable bank in this release. Until now
+      // grants were added here but never spent here — the client used them
+      // within one level and forgot them — so the stored totals count charges
+      // already used. Start every bank from zero rather than refund those.
+      `UPDATE users SET power_hint = 0, power_freeze = 0, power_boost = 0`,
+    ],
+  },
 ];
 
 /** Bookkeeping table the runner uses to know what has already applied. */

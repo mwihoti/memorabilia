@@ -107,7 +107,7 @@ async function read(req: VercelRequest, res: VercelResponse) {
 /* ── Write ───────────────────────────────────────────────────────────────── */
 
 async function write(req: VercelRequest, res: VercelResponse) {
-  const limit = rateLimit(`guild:${getClientKey(req)}`, 20, 60_000);
+  const limit = await rateLimit(`guild:${getClientKey(req)}`, 20, 60_000);
   if (!limit.allowed) {
     return res.status(429).json({ message: 'Too many requests', retryAfter: limit.retryAfter });
   }

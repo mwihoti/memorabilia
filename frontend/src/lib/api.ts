@@ -154,28 +154,53 @@ export async function fetchPlayerProgress(telegramUser: SubmitScoreParams['teleg
   return payload.progress ?? [];
 }
 
-export async function savePlayerProgress(
-  telegramUser: SubmitScoreParams['telegramUser'],
-  progress: ProgressRow
-): Promise<void> {
+export interface PlayerState {
+  streak: { current: number; longest: number; lastDate: string | null };
+  powers: { hint: number; freeze: number; boost: number };
+  achievements: Array<{ id: string; unlockedAt: number }>;
+  relics: string[];
+}
+
+/**
+ * The server's copy of everything a player has earned: streak, power-up
+ * charges, achievements and relics. Loaded on start so a new device picks up
+ * where the last one left off.
+ */
+export async function fetchPlayerState(telegramUser: SubmitScoreParams['telegramUser']): Promise<PlayerState> {
   const res = await fetch(`${BASE}/api/progress`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'save', telegramUser, progress, initData: getInitData() }),
+    body: JSON.stringify({ action: 'state', telegramUser, initData: getInitData() }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-    throw new Error(err.message || 'Failed to save player progression');
-  }
+  if (!res.ok) throw new Error('Failed to fetch player state');
+  return res.json();
+}
+
+/** Spend one server-held power-up charge. Resolves to the charges left. */
+export async function spendPowerUp(
+  telegramUser: SubmitScoreParams['telegramUser'],
+  power: 'hint' | 'freeze' | 'boost',
+): Promise<number> {
+  const res = await fetch(`${BASE}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'power.use', power, telegramUser, initData: getInitData() }),
+  });
+
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.message || 'Failed to spend power-up');
+  return Number(payload.remaining ?? 0);
 }
 
 export interface StartRunParams {
   telegramUser: SubmitScoreParams['telegramUser'];
   difficulty: number;
   level: number;
-  challengeMode: 'standard' | 'daily' | 'weekly' | 'room';
+  challengeMode: 'standard' | 'daily' | 'weekly' | 'room' | 'boss';
   requestedSeed?: number;
+  /** Required for `room` runs; the server reads the board from the room. */
+  roomId?: string;
 }
 
 export interface StartRunResult {
@@ -260,12 +285,12 @@ async function postChallengeRoom(body: Record<string, unknown>): Promise<Challen
   return res.json();
 }
 
+/** The server deals the room's board; the returned room carries its seed. */
 export async function createChallengeRoom(params: {
   telegramUser: SubmitScoreParams['telegramUser'];
   displayName: string;
   difficulty: number;
   level: number;
-  seed: number;
 }): Promise<ChallengeRoom> {
   return postChallengeRoom({ action: 'create', ...params });
 }
@@ -292,13 +317,14 @@ export async function rematchChallengeRoom(params: {
   return postChallengeRoom({ action: 'rematch', ...params });
 }
 
+/**
+ * Post a room finish. Only the verified run id is sent; the server reads the
+ * time, moves and score from that run rather than taking them from here.
+ */
 export async function submitChallengeRoomResult(params: {
   telegramUser: SubmitScoreParams['telegramUser'];
   roomId: string;
-  timeSeconds: number;
-  moves: number;
-  score: number;
-  verified: boolean;
+  runId: number;
 }): Promise<ChallengeRoom> {
   return postChallengeRoom({ action: 'submit', ...params });
 }
@@ -397,11 +423,11 @@ async function postActivity<T>(body: Record<string, unknown>): Promise<T> {
   return res.json();
 }
 
+/** The server deals the duel's board, so both players get one neither chose. */
 export function createDuel(params: {
   telegramUser: SubmitScoreParams['telegramUser'];
   difficulty: number;
   level: number;
-  seed: number;
   displayName: string;
 }) {
   return postActivity<{ id: string; expiresAt: string; windowHours: number }>({

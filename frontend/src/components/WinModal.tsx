@@ -8,6 +8,7 @@ import { isScoreEligibleForNFT } from '../cartridge/config';
 import { createDuel, fetchPlayerStats } from '../lib/api';
 import { loadGhostReplay } from '../store/ghostReplay';
 import MedalBadge from './MedalBadge';
+import { referralLink, shareLink } from '../lib/links';
 
 interface WinModalProps {
   onClose: () => void;
@@ -148,26 +149,14 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
         },
         difficulty: currentEra,
         level: currentLevel,
-        seed: Math.floor(Math.random() * 2_000_000_000),
         displayName: playerName || telegramUser.first_name || 'Curator',
       });
       setDuelCode(duel.id);
 
       const text =
         `⚔️ I scored ${(currentGame?.score ?? 0).toLocaleString()} on this board. ` +
-        `You have 24 hours to beat it.\n\nDuel code: ${duel.id}\n` +
-        `https://t.me/enter_memorabilia_musem_bot${telegramUser.id ? `?start=ref_${telegramUser.id}` : ''}`;
-
-      if (navigator.share) {
-        try {
-          await navigator.share({ text });
-          return;
-        } catch { /* cancelled */ }
-      }
-      const tg = (window as any).Telegram?.WebApp;
-      const url = `https://t.me/share/url?url=${encodeURIComponent('https://t.me/enter_memorabilia_musem_bot')}&text=${encodeURIComponent(text)}`;
-      if (tg?.openTelegramLink) tg.openTelegramLink(url);
-      else await navigator.clipboard.writeText(text).catch(() => window.open(url, '_blank'));
+        `You have 24 hours to beat it.\n\nDuel code: ${duel.id}`;
+      await shareLink(referralLink(telegramUser.id), text);
     } catch {
       // A failed duel must not block the win screen; the code stays null and
       // the button returns to its resting state.
@@ -188,36 +177,14 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
       `${starStr} I scored ${currentGame.score.toLocaleString()} pts on Memorabilia!\n` +
       `${diffLabel} · ${currentGame.moves} moves · ${formatTime(elapsedTime)}\n` +
       `${challengeLine ? `${challengeLine}\n` : ''}` +
-      `Play now 👉 https://t.me/enter_memorabilia_musem_bot${telegramUser?.id ? `?start=ref_${telegramUser.id}` : ''}`;
+      `Can you beat it? 👇`;
 
-    // Try native Web Share first (works in Telegram WebApp on mobile)
-    if (navigator.share) {
-      try {
-        await navigator.share({ text: shareText });
-        return;
-      } catch { /* user cancelled or not supported */ }
-    }
-
-    // Telegram forward link fallback
-    const inviteUrl = `https://t.me/enter_memorabilia_musem_bot${telegramUser?.id ? `?start=ref_${telegramUser.id}` : ''}`;
-    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(shareText)}`;
-    const tg = (window as any).Telegram?.WebApp;
-    if (tg?.openTelegramLink) {
-      tg.openTelegramLink(tgUrl);
-      return;
-    }
-    if (tg?.openLink) {
-      tg.openLink(tgUrl);
-      return;
-    }
-
-    // Final fallback: copy to clipboard
-    try {
-      await navigator.clipboard.writeText(shareText);
+    // The link carries the player's referral code, so a friend who joins
+    // through it and clears a level pays out to both of them.
+    const how = await shareLink(referralLink(telegramUser?.id), shareText);
+    if (how === 'copied') {
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2500);
-    } catch {
-      window.open(tgUrl, '_blank');
     }
   };
 

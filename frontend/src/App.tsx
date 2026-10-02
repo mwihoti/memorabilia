@@ -1,31 +1,32 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useGameStore } from './store/gameStore';
-import { setupDojo, createBurnerAccount } from './dojo/setup';
-import { createGameController } from './dojo/gameController';
 import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp, showConfirm } from './telegram/telegram';
 import { GhostReplay, Difficulty, getMaxLevelForEra } from './types';
 import { loadGhostReplay } from './store/ghostReplay';
 import { resolveStartupIntroState } from '../../shared/startupIntro.js';
 
 // Components
+// Screens off the first-paint path load on demand; on a slow phone that keeps
+// the level selector from waiting on code for the dashboard or a duel room.
+const UserDashboard = lazy(() => import('./components/UserDashboard'));
+const Activities = lazy(() => import('./components/Activities'));
+const Collection = lazy(() => import('./components/Collection'));
+const FarewellScreen = lazy(() => import('./components/FarewellScreen'));
+const GhostReplayModal = lazy(() => import('./components/GhostReplayModal'));
+const ChallengeRoom = lazy(() => import('./components/ChallengeRoom'));
+const WinModal = lazy(() => import('./components/WinModal'));
 import LoadingScreen from './components/LoadingScreen';
 import NameEntry from './components/NameEntry';
 import GameBoard from './components/GameBoard';
-import WinModal from './components/WinModal';
 import AppShell, { NavKey } from './components/AppShell';
 import TelegramRequired from './components/TelegramRequired';
-import UserDashboard from './components/UserDashboard';
-import Activities from './components/Activities';
-import Collection from './components/Collection';
-import FarewellScreen from './components/FarewellScreen';
 import MuseumBackground from './components/MuseumBackground';
 import LevelSelector from './components/LevelSelector';
 import AchievementToast from './components/AchievementToast';
-import GhostReplayModal from './components/GhostReplayModal';
 import IntroCinematic from './components/IntroCinematic';
-import ChallengeRoom from './components/ChallengeRoom';
 import { ChallengeRoom as ChallengeRoomData, createChallengeRoom } from './lib/api';
 import { debug } from './lib/log';
+import { getLaunchRoomId } from './lib/links';
 
 type Screen = 'loading' | 'name-entry' | 'level-select' | 'challenge-room' | 'game' | 'activities' | 'collection' | 'dashboard' | 'farewell';
 
@@ -33,6 +34,14 @@ function buildCleanRoomUrl(roomId: string): string {
   const url = new URL(window.location.origin + window.location.pathname);
   url.searchParams.set('room', roomId.toUpperCase());
   return url.toString();
+}
+
+function ScreenFallback() {
+  return (
+    <div className="py-16 text-center text-sm" style={{ color: 'var(--mu-text-dim, rgba(255,255,255,0.55))' }}>
+      Opening the gallery…
+    </div>
+  );
 }
 
 function buildCleanAppUrl(): string {
@@ -115,6 +124,13 @@ function App() {
         } else {
           debug('Running in BLOCKCHAIN MODE');
 
+          // Starknet and Dojo are only fetched in blockchain mode; the demo
+          // build never downloads them.
+          const [{ setupDojo, createBurnerAccount }, { createGameController }] = await Promise.all([
+            import('./dojo/setup'),
+            import('./dojo/gameController'),
+          ]);
+
           // Setup Dojo
           await setupDojo();
 
@@ -149,11 +165,10 @@ function App() {
   }, [telegramUser?.id, hydratePlayerProgress]);
 
   useEffect(() => {
-    const roomId = new URLSearchParams(window.location.search).get('room');
+    const roomId = getLaunchRoomId();
     if (roomId) {
-      const normalized = roomId.toUpperCase();
-      setActiveRoomId(normalized);
-      setPendingRoomId(normalized);
+      setActiveRoomId(roomId);
+      setPendingRoomId(roomId);
     }
   }, []);
 
@@ -246,7 +261,6 @@ function App() {
       displayName: playerName || telegramUser.first_name || 'Curator',
       difficulty: era,
       level,
-      seed: Math.floor(Math.random() * 2_000_000_000),
     });
 
     window.history.replaceState({}, '', buildCleanRoomUrl(room.id));
@@ -291,7 +305,11 @@ function App() {
 
   // Farewell screen
   if (screen === 'farewell') {
-    return <FarewellScreen onPlayAgain={() => setScreen('level-select')} />;
+    return (
+      <Suspense fallback={null}>
+        <FarewellScreen onPlayAgain={() => setScreen('level-select')} />
+      </Suspense>
+    );
   }
 
   const navActive: NavKey =
@@ -309,7 +327,7 @@ function App() {
   };
 
   const handlePlayBoss = async (era: Difficulty, level: number) => {
-    await startLevelGame(era, level, false);
+    await startLevelGame(era, level, false, { boss: true });
     setScreen('game');
   };
 
@@ -360,6 +378,7 @@ function App() {
           />
         )}
 
+        <Suspense fallback={<ScreenFallback />}>
         {screen === 'challenge-room' && activeRoomId && (
           <ChallengeRoom roomId={activeRoomId} onBack={handleLeaveRoom} onPlay={handleOpenRoom} />
         )}
@@ -381,8 +400,10 @@ function App() {
         {screen === 'collection' && <Collection />}
 
         {screen === 'dashboard' && <UserDashboard />}
+        </Suspense>
       </AppShell>
 
+      <Suspense fallback={null}>
       {showWinModal && (
         <WinModal
           onClose={handleWinModalClose}
@@ -394,6 +415,7 @@ function App() {
       {showGhostReplay && ghostReplayData && (
         <GhostReplayModal replay={ghostReplayData} onClose={handleGhostReplayClose} />
       )}
+      </Suspense>
 
       {/* Achievement toast — always rendered, reads from store */}
       <AchievementToast

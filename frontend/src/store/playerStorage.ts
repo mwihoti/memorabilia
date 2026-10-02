@@ -271,6 +271,11 @@ function saveAllLevelProgress(progress: LevelProgress[]): void {
   }
 }
 
+/** Replace every stored level record, e.g. with the server's authoritative copy. */
+export function replaceLevelProgress(progress: LevelProgress[]): void {
+  saveAllLevelProgress(progress);
+}
+
 export function getLevelProgress(era: Difficulty, level: number): LevelProgress | null {
   const all = getAllLevelProgress();
   return all.find((lp) => lp.era === era && lp.level === level) ?? null;

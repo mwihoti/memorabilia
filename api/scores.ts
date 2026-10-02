@@ -3,7 +3,7 @@ import { sql, ensureDb } from './_db';
 import { requireTelegramUser, AuthError } from './_auth';
 import { getClientKey, rateLimit } from './_rateLimit';
 import { logApiError } from './_telemetry';
-import { verifyReplaySubmission } from '../shared/gameRules';
+import { checkRunTiming, getLevelRule, getTimeMedal, verifyReplaySubmission } from '../shared/gameRules';
 import { applyRunRewards } from './_rewards';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
 
-  const limit = rateLimit(`scores:${getClientKey(req)}`, 40, 60_000);
+  const limit = await rateLimit(`scores:${getClientKey(req)}`, 40, 60_000);
   if (!limit.allowed) {
     return res.status(429).json({ message: 'Too many score submissions', retryAfter: limit.retryAfter });
   }
@@ -55,7 +55,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tid = BigInt(verifiedUser.id);
     const runRows = runId
       ? await sql`
-          SELECT id, seed, difficulty, level, completed_at
+          SELECT id, seed, difficulty, level, challenge_mode, completed_at,
+                 (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::bigint AS elapsed_ms
           FROM run_sessions
           WHERE id = ${runId} AND telegram_id = ${tid}
           LIMIT 1
@@ -71,20 +72,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(409).json({ message: 'This run has already been submitted' });
     }
 
+    // The run row, not the request body, says which board was played.
+    const era = Number(run.difficulty) as 1 | 2 | 3 | 4 | 5;
+    const runLevel = Number(run.level);
+
     const verification = verifyReplaySubmission({
-      difficulty: Number(run.difficulty) as 1 | 2 | 3 | 4 | 5,
-      level: Number(run.level),
+      difficulty: era,
+      level: runLevel,
       seed: Number(run.seed),
       replayMoves,
     });
 
-    if (!verification.verified) {
+    const timing = verification.verified
+      ? checkRunTiming({
+          serverElapsedMs: Number(run.elapsed_ms),
+          replayDurationMs: Number(replayMoves[replayMoves.length - 1]?.timestamp ?? 0),
+        })
+      : null;
+
+    if (!verification.verified || (timing && !timing.ok)) {
+      const reason = !verification.verified
+        ? verification.reason || 'Replay verification failed'
+        : (timing as { ok: false; reason: string }).reason;
       await sql`
         UPDATE run_sessions
         SET verification_status = 'rejected', completed_at = NOW()
-        WHERE id = ${run.id}
+        WHERE id = ${run.id} AND completed_at IS NULL
       `;
-      return res.status(400).json({ message: verification.reason || 'Replay verification failed' });
+      return res.status(400).json({ message: reason });
+    }
+
+    // Claim the run before writing anything. The completed_at check above is
+    // only a fast path; two submits racing for the same run both pass it, and
+    // only one of them may win this update and go on to mint rewards.
+    const claimed = await sql`
+      UPDATE run_sessions
+      SET verification_status = 'verifying', completed_at = NOW()
+      WHERE id = ${run.id} AND completed_at IS NULL
+      RETURNING id
+    `;
+    if (!claimed.length) {
+      return res.status(409).json({ message: 'This run has already been submitted' });
     }
 
     const verifiedScore = verification.score;
@@ -119,26 +147,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await sql`
       INSERT INTO game_sessions (telegram_id, run_id, score, difficulty, level, moves, time_seconds, stars, verified)
-      VALUES (${tid}, ${run.id}, ${verifiedScore}, ${difficulty}, ${level}, ${verifiedMoves}, ${verifiedTimeSeconds}, ${verifiedStars}, TRUE)
+      VALUES (${tid}, ${run.id}, ${verifiedScore}, ${era}, ${runLevel}, ${verifiedMoves}, ${verifiedTimeSeconds}, ${verifiedStars}, TRUE)
     `;
+
+    // Computed here from the verified time; the client's medal is never read.
+    const medal = getTimeMedal(verifiedTimeSeconds, getLevelRule(era, runLevel));
+
+    // Level progress is written from the verified result. This is what the
+    // level gate in run-session reads, so it must not come from the client.
+    if (String(run.challenge_mode) === 'standard') {
+      await sql`
+        INSERT INTO player_progress (telegram_id, era, level, completed, best_score, best_time, best_medal, stars, completed_at, updated_at)
+        VALUES (${tid}, ${era}, ${runLevel}, TRUE, ${verifiedScore}, ${verifiedTimeSeconds}, ${medal}, ${verifiedStars}, NOW(), NOW())
+        ON CONFLICT (telegram_id, era, level) DO UPDATE SET
+          completed = TRUE,
+          best_score = GREATEST(player_progress.best_score, EXCLUDED.best_score),
+          best_time = CASE
+            WHEN player_progress.best_time = 0 THEN EXCLUDED.best_time
+            ELSE LEAST(player_progress.best_time, EXCLUDED.best_time)
+          END,
+          best_medal = CASE
+            WHEN array_position(ARRAY['none','bronze','silver','gold'], EXCLUDED.best_medal)
+               > COALESCE(array_position(ARRAY['none','bronze','silver','gold'], player_progress.best_medal), 0)
+            THEN EXCLUDED.best_medal
+            ELSE player_progress.best_medal
+          END,
+          stars = GREATEST(player_progress.stars, EXCLUDED.stars),
+          completed_at = COALESCE(player_progress.completed_at, EXCLUDED.completed_at),
+          updated_at = NOW()
+      `;
+    }
 
     await sql`
       UPDATE run_sessions
-      SET verification_status = 'verified', completed_at = NOW()
+      SET verification_status = 'verified'
       WHERE id = ${run.id}
     `;
 
     const rewards = await applyRunRewards({
       telegramId: tid,
-      era: Number(run.difficulty) as 1 | 2 | 3 | 4 | 5,
-      level: Number(run.level),
+      era,
+      level: runLevel,
       score: verifiedScore,
       stars: verifiedStars,
       timeSeconds: verifiedTimeSeconds,
       mismatches: verification.mismatches,
       maxCombo: verification.maxCombo,
-      medal: String(req.body?.medal ?? 'none'),
+      medal,
       isDailyChallenge: String(run.challenge_mode) === 'daily',
+      isBossRun: String(run.challenge_mode) === 'boss',
     });
 
     const rankResult = await sql`
@@ -161,6 +218,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       verifiedScore,
       verifiedMoves,
       verifiedTimeSeconds,
+      verifiedStars,
+      medal,
       adjusted: verifiedScore !== score || verifiedMoves !== moves || verifiedTimeSeconds !== timeSeconds || verifiedStars !== stars,
       rewards,
     });

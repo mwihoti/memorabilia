@@ -98,6 +98,25 @@ bot.start(async (ctx) => {
     return replyTheme(ctx, ref.replace('theme_', ''));
   }
 
+  // room_<code> — a challenge-room invite; mirrors api/telegram-webhook.ts.
+  const room = /^room_([A-Za-z0-9]{6})$/.exec(ref);
+  if (room) {
+    const roomId = room[1].toUpperCase();
+    return ctx.reply(
+      `⚔️ <b>${name}, you've been challenged!</b>\n\n` +
+      `Room <b>${roomId}</b> is waiting — same board for everyone, fastest verified clear wins.`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `⚔️  Join room ${roomId}`, web_app: { url: `${WEB_APP_URL}?room=${roomId}` } }],
+            [{ text: '« Main Menu', callback_data: 'main' }],
+          ],
+        },
+      }
+    );
+  }
+
   return ctx.reply(
     `🏛️ <b>Hey ${name}! Welcome to Memorabilia!</b>\n\n` +
     `I'm your guide to the on-chain memory card game built on Starknet.\n\n` +

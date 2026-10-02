@@ -146,6 +146,8 @@ export interface TelegramWebApp {
     query_id?: string;
     auth_date?: number;
     hash?: string;
+    /** Payload of a `t.me/<bot>?startapp=` link the app was opened from. */
+    start_param?: string;
   };
   version: string;
   platform: string;
