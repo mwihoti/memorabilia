@@ -12,6 +12,9 @@
 
 const BASE = (process.argv[2] || 'https://memorabilia-game.vercel.app').replace(/\/$/, '');
 
+/** Pass the expected commit to check the deploy is current: `npm run smoke -- '' 4669d00`. */
+const EXPECT_SHA = process.argv[3] || '';
+
 let failures = 0;
 
 function report(ok, label, detail = '') {
@@ -50,6 +53,19 @@ report(
     : 'still serving the pre-redesign build — Vercel has not deployed',
 );
 
+const sha = page.text.match(/name="build-sha" content="([^"]+)"/)?.[1] ?? null;
+report(
+  sha !== null && (!EXPECT_SHA || sha === EXPECT_SHA),
+  'deployed build is current',
+  sha === null
+    ? 'no build-sha stamp — this deploy predates SHA stamping'
+    : EXPECT_SHA
+      ? sha === EXPECT_SHA
+        ? `serving ${sha}`
+        : `serving ${sha}, expected ${EXPECT_SHA} — the latest push has not deployed`
+      : `serving ${sha}`,
+);
+
 /* ── 2. Do the new API routes exist? ──────────────────────────────────────── */
 
 const activities = await get('/api/activities');
@@ -83,12 +99,22 @@ try {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'duel.create', telegramUser: { id: 1, first_name: 'smoke' } }),
   });
+  const body = await res.json().catch(() => ({}));
+  const message = String(body.message ?? '');
+
+  // A missing TELEGRAM_BOT_TOKEN also returns 401, so the status alone is a
+  // false green: it looks like auth is working when in fact every write from a
+  // real player is being rejected too.
+  const misconfigured = message.includes('not configured to verify');
+
   report(
-    res.status === 401,
-    'auth fails closed',
-    res.status === 401
-      ? 'unauthenticated write rejected'
-      : `expected 401, got ${res.status} — check TELEGRAM_BOT_TOKEN`,
+    res.status === 401 && !misconfigured,
+    'auth is configured and rejecting',
+    misconfigured
+      ? 'TELEGRAM_BOT_TOKEN is NOT set — every score submission will fail'
+      : res.status === 401
+        ? 'unauthenticated write rejected'
+        : `expected 401, got ${res.status}`,
   );
 } catch (err) {
   report(false, 'auth fails closed', String(err));
