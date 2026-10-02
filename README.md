@@ -62,6 +62,7 @@ The game now ships with 5 eras and 400 main levels total: Ancient Era (50), Medi
 - **Guilds** — up to 12 curators pooling a weekly score
 - **Relic collection** — 44 relics, with the unearned ones shown as labelled gaps
 - **Referrals** — invite links reward both sides once the invitee clears a level
+- **Challenge rooms** — live races on one board; the invite is a bot link that opens the game straight into the room
 
 ### Visuals
 - **Time-Travel Museum theme** — dark gallery, gold leaf, parchment surfaces
@@ -199,17 +200,31 @@ The app auto-detects demo mode when `VITE_WORLD_ADDRESS` is unset and runs entir
 ### Environment Variables
 
 ```env
-# Frontend (frontend/.env)
+# Frontend (frontend/.env) — every VITE_ value is public, never put a secret here
 VITE_WORLD_ADDRESS=       # Dojo world address (leave empty for demo mode)
 VITE_RPC_URL=             # Starknet RPC endpoint
 VITE_API_URL=             # Backend API base URL
+VITE_BOT_USERNAME=        # Bot used in invite links (default: enter_memorabilia_musem_bot)
 
-# API / Bot (.env)
-BOT_TOKEN=                # Telegram bot token
+# API / Bot (Vercel environment)
+BOT_TOKEN=                # Telegram bot token, used by the webhook to reply
+TELEGRAM_BOT_TOKEN=       # Same token, used to verify players' initData
+TELEGRAM_WEBHOOK_SECRET=  # Random string; also pass it as secret_token to setWebhook
 WEB_APP_URL=              # Vercel deployment URL
 DATABASE_URL=             # Neon PostgreSQL connection string
-TELEGRAM_BOT_SECRET=      # Webhook secret
+CRON_SECRET=              # Guards /api/cron
 ```
+
+To make the webhook reject forged updates, register it with the same secret:
+
+```bash
+curl "https://api.telegram.org/bot$BOT_TOKEN/setWebhook" \
+  -d url="$WEB_APP_URL/api/telegram-webhook" \
+  -d secret_token="$TELEGRAM_WEBHOOK_SECRET"
+```
+
+Set the variable on Vercel first, then call `setWebhook`; in the gap between
+the two, Telegram's updates are refused.
 
 ---
 
@@ -283,6 +298,16 @@ get_nft_metadata(token_id) -> ScoreNFT
 ---
 
 ## Testing
+
+```bash
+# API typecheck, game unit tests, and a production build
+npm run typecheck
+cd frontend && npm run test:unit && npm run build
+```
+
+The unit tests cover replay verification and its anti-cheat limits, the level
+gate, daily and weekly boards across timezones, deep-link parsing, and the
+activity rules (seasons, duels, quit penalties).
 
 ```bash
 # Run all contract tests

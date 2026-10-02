@@ -55,6 +55,34 @@ function saveStoredAchievements(achievements: Achievement[]): void {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
+ * Bring the server's achievements into the local store.
+ *
+ * With `merge`, the server's unlocks are added to what is already stored —
+ * the normal case, so achievements earned before the server tracked them are
+ * not wiped and do not toast a second time. Without it, the server's list
+ * replaces the store outright.
+ */
+export function adoptServerAchievements(
+  server: Array<string | { id: string; unlockedAt?: number }>,
+  options: { merge?: boolean } = {},
+): void {
+  const now = Date.now();
+  const incoming = server
+    .map((entry) => (typeof entry === 'string' ? { id: entry, unlockedAt: now } : entry))
+    .filter((entry) => ACHIEVEMENTS.some((a) => a.id === entry.id));
+
+  const base = options.merge ? loadStoredAchievements() : [];
+  const byId = new Map(base.map((a) => [a.id, a]));
+  for (const entry of incoming) {
+    const known = ACHIEVEMENTS.find((a) => a.id === entry.id)!;
+    if (!byId.get(entry.id)?.unlockedAt) {
+      byId.set(entry.id, { ...known, unlockedAt: entry.unlockedAt ?? now });
+    }
+  }
+  saveStoredAchievements([...byId.values()]);
+}
+
+/**
  * Returns all achievements with their unlock status merged in.
  */
 export function getUnlockedAchievements(): Achievement[] {

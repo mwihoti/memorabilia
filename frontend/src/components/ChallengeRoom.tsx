@@ -3,18 +3,12 @@ import { motion } from 'framer-motion';
 import { fetchChallengeRoom, joinChallengeRoom, ChallengeRoom as ChallengeRoomData, rematchChallengeRoom, startChallengeRoom } from '../lib/api';
 import { useGameStore } from '../store/gameStore';
 import { getDifficultyMeta } from '../types';
-import { openTelegramLink } from '../telegram/telegram';
+import { roomInviteLink, shareLink } from '../lib/links';
 
 interface ChallengeRoomProps {
   roomId: string;
   onBack: () => void;
   onPlay: (room: ChallengeRoomData) => void;
-}
-
-function buildShareLink(roomId: string): string {
-  const url = new URL(window.location.origin + window.location.pathname);
-  url.searchParams.set('room', roomId.toUpperCase());
-  return url.toString();
 }
 
 export default function ChallengeRoom({ roomId, onBack, onPlay }: ChallengeRoomProps) {
@@ -90,27 +84,18 @@ export default function ChallengeRoom({ roomId, onBack, onPlay }: ChallengeRoomP
   }, [room?.countdownEndsAt, room?.status]);
 
   const handleShare = async () => {
-    const link = buildShareLink(roomId);
+    // A bot link, not a web URL: it opens inside Telegram for the friend, and
+    // the bot registers them before handing over a button into this room.
+    const link = roomInviteLink(roomId);
     const difficulty = room ? getDifficultyMeta(room.difficulty as any) : null;
     const text = difficulty
-      ? `Join my Memorabilia duel: ${difficulty.icon} ${difficulty.label} Level ${room?.level}. Same board, fastest verified time wins.`
-      : `Join my Memorabilia duel room ${roomId}. Same board, fastest time wins.`;
-    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(`${text} Room ${roomId}`)}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ text, url: link });
-        return;
-      } catch {}
-    }
-    try {
-      openTelegramLink(tgUrl);
-      return;
-    } catch {}
-    try {
-      await navigator.clipboard.writeText(link);
+      ? `⚔️ Join my Memorabilia duel: ${difficulty.icon} ${difficulty.label} Level ${room?.level}. Same board, fastest verified time wins. Room ${roomId}`
+      : `⚔️ Join my Memorabilia duel room ${roomId}. Same board, fastest time wins.`;
+    const how = await shareLink(link, text);
+    if (how === 'copied') {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    }
   };
 
   const handleStart = async () => {

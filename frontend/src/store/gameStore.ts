@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Account } from 'starknet';
+import type { Account } from 'starknet';
 import {
   GameState, Difficulty, Card, PlayerStats, LeaderboardEntry, TelegramUser,
   GAME_CONFIGS, calculateStars, calculateStars as _calcStars,
@@ -7,18 +7,16 @@ import {
   ERA_LEVEL_CONFIGS, EraLevel, RunAnalytics, RelicReward,
   getComboMultiplier, getTimeMedal, getTimeBonusScore, getStreakMultiplier, isEraUnlocked,
 } from '../types';
-import { GameController } from '../dojo/gameController';
+import type { GameController } from '../dojo/gameController';
 import {
   createDemoGame, checkCardsMatch, calculateScore, getEmojisForDifficulty,
   createLevelGame, calculateLevelScore,
 } from './demoGame';
 import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } from '../utils/sounds';
-import { cartridgeController } from '../cartridge/CartridgeController';
-import { mintScoreNFT } from '../cartridge/nftMinter';
-import { addGameScore, saveLevelProgress, getAllLevelProgress, getRelicRewards, saveRelicReward } from './playerStorage';
-import { fetchPlayerProgress, reportQuit, savePlayerProgress, sendTelemetry, startVerifiedRun, submitChallengeRoomResult, submitScore } from '../lib/api';
-import { checkAndUnlockAchievements } from './achievementStore';
-import { loadStreak, recordGamePlayed } from './streakStore';
+import { addGameScore, saveLevelProgress, getAllLevelProgress, getRelicRewards, replaceLevelProgress, saveRelicReward } from './playerStorage';
+import { fetchPlayerProgress, fetchPlayerState, reportQuit, sendTelemetry, spendPowerUp, startVerifiedRun, submitChallengeRoomResult, submitScore } from '../lib/api';
+import { adoptServerAchievements, checkAndUnlockAchievements } from './achievementStore';
+import { adoptServerStreak, loadStreak, recordGamePlayed } from './streakStore';
 import { getDailyChallengeConfig, getWeeklyChallengeConfig, saveDailyChallenge, saveWeeklyChallenge } from './dailyChallenge';
 import { buildReplay, saveGhostReplayIfBest } from './ghostReplay';
 import { debug } from '../lib/log';
@@ -26,7 +24,11 @@ import { debug } from '../lib/log';
 /** Only one theme ships now; the type stays so the store shape is unchanged. */
 export type Theme = 'museum';
 
-type ChallengeMode = 'standard' | 'daily' | 'weekly' | 'room';
+type ChallengeMode = 'standard' | 'daily' | 'weekly' | 'room' | 'boss';
+
+type PowerKind = 'hint' | 'freeze' | 'boost';
+type PowerCounts = Record<PowerKind, number>;
+const NO_POWERS: PowerCounts = { hint: 0, freeze: 0, boost: 0 };
 
 function buildLevelActions(era: Difficulty, level: number) {
   return {
@@ -179,6 +181,14 @@ interface GameStore {
   consecutiveQuits: number;
   /** Season points the last run was worth, as scored by the server. */
   seasonPointsEarned: number;
+  /**
+   * Power-up charges the server holds for this player (earned from streaks,
+   * referrals and bosses). They outlive a level and a device, unlike the free
+   * charges each level hands out, which are tracked in `levelPowers`.
+   */
+  bankedPowers: PowerCounts;
+  /** Free charges the current level gave and that have not been used yet. */
+  levelPowers: PowerCounts;
 
   // Actions
   setTelegramUser: (user: TelegramUser | null) => void;
@@ -204,12 +214,14 @@ interface GameStore {
 
   // ── Level System Actions ───────────────────────────────────────────────────
   setCurrentLevel: (era: Difficulty, level: number) => void;
-  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean) => Promise<void>;
+  startLevelGame: (era: Difficulty, level: number, isDailyChallenge?: boolean, options?: { boss?: boolean }) => Promise<void>;
   startWeeklyChallenge: () => Promise<void>;
   startChallengeRoomGame: (room: { id: string; difficulty: Difficulty; level: number; seed: number }) => Promise<void>;
   clearNewAchievements: () => void;
   loadLevelProgress: () => void;
   hydratePlayerProgress: () => Promise<void>;
+  /** Spend one charge, free level charges first, then the server bank. */
+  drawPower: (kind: PowerKind) => void;
   useHint: () => void;
   useFreeze: () => void;
   useTrap: () => void;
@@ -284,6 +296,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   trapCharges: 0,
   trapReshufflesUsed: 0,
   multiplierCharges: 0,
+  bankedPowers: NO_POWERS,
+  levelPowers: NO_POWERS,
   pendingMultiplier: 1,
   multiplierMatches: 0,
   hiddenCardIndices: [],
@@ -309,6 +323,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     try {
       debug('Connecting wallet...');
+      const { cartridgeController } = await import('../cartridge/CartridgeController');
       const result = await cartridgeController.connect();
 
       set({
@@ -329,6 +344,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   disconnectWallet: async () => {
     try {
       debug('Disconnecting wallet...');
+      const { cartridgeController } = await import('../cartridge/CartridgeController');
       await cartridgeController.disconnect();
 
       set({
@@ -365,6 +381,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       debug('Minting NFT for score:', currentGame.score);
 
+      // Wallet and minting code (and starknet with it) loads only when used.
+      const { mintScoreNFT } = await import('../cartridge/nftMinter');
       const result = await mintScoreNFT({
         recipient: walletAddress,
         score: currentGame.score,
@@ -637,11 +655,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
               stars,
               completedAt: completedAt,
             };
-            saveLevelProgress(progress);
+            // Only a standard clear opens the next level — daily, weekly, boss
+            // and room boards are played out of order, and the server's level
+            // gate does not count them, so neither does the local copy.
+            const { isDailyChallenge, challengeMode } = get();
+            if (challengeMode === 'standard') saveLevelProgress(progress);
             const updatedLevelProgress = getAllLevelProgress();
 
             // Daily challenge
-            const { isDailyChallenge, challengeMode } = get();
             if (isDailyChallenge) {
               saveDailyChallenge(levelScore, medal);
             }
@@ -704,25 +725,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
               lastRunAnalytics:           analytics,
             });
 
-            const { telegramUser } = get();
-            if (telegramUser) {
-              savePlayerProgress(
-                {
-                  id: telegramUser.id,
-                  username: telegramUser.username,
-                  first_name: telegramUser.first_name,
-                  last_name: telegramUser.last_name,
-                },
-                progress,
-              ).catch((error) => {
-                sendTelemetry({
-                  type: 'error',
-                  source: 'progress-sync',
-                  message: error.message || 'Failed to sync progress',
-                  metadata: { era: currentEra, level: currentLevel },
-                });
-              });
-            }
+            // Level progress reaches the server through submitScore below:
+            // the server writes it from the verified run, never from here.
           }
 
           // Save score to local storage
@@ -754,6 +758,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const config = GAME_CONFIGS[finalGame.difficulty];
             const stars = calculateStars(finalGame.moves, config.optimalMoves);
 
+            // Captured now: by the time the submit resolves the player may
+            // already be on another board, with a new run id in the store.
+            const finishedRunId = get().verifiedRunId;
+            const finishedRoomId = get().activeChallengeRoomId;
+
             submitScore({
               telegramUser: {
                 id: telegramUser.id,
@@ -768,7 +777,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               timeSeconds: elapsedTime,
               stars,
               replayMoves: get().replayMoves,
-              runId: get().verifiedRunId,
+              runId: finishedRunId,
             })
               .then((result) => {
                 debug(`Score saved — rank #${result.rank} of ${result.totalPlayers}${result.isNewBest ? ' (new personal best)' : ''}`);
@@ -778,6 +787,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 // it returns rather than trusting the local copy.
                 const rewards = result.rewards;
                 if (rewards) {
+                  adoptServerStreak(rewards.streak);
+                  adoptServerAchievements(rewards.achievementsUnlocked, { merge: true });
                   set((state) => ({
                     streak: {
                       ...state.streak,
@@ -788,14 +799,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     hintCharges: state.hintCharges + rewards.granted.hint,
                     freezeCharges: state.freezeCharges + rewards.granted.freeze,
                     multiplierCharges: state.multiplierCharges + rewards.granted.boost,
+                    bankedPowers: {
+                      hint: state.bankedPowers.hint + rewards.granted.hint,
+                      freeze: state.bankedPowers.freeze + rewards.granted.freeze,
+                      boost: state.bankedPowers.boost + rewards.granted.boost,
+                    },
                     serverRelics: rewards.relicsEarned,
                     seasonPointsEarned: rewards.seasonPoints,
                     consecutiveQuits: 0,
                   }));
                 }
 
-                const roomId = get().activeChallengeRoomId;
-                if (roomId) {
+                const roomId = finishedRoomId;
+                const roomRunId = finishedRunId;
+                if (roomId && roomRunId) {
                   submitChallengeRoomResult({
                     telegramUser: {
                       id: telegramUser.id,
@@ -804,10 +821,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                       last_name: telegramUser.last_name,
                     },
                     roomId,
-                    timeSeconds: result.verifiedTimeSeconds ?? elapsedTime,
-                    moves: result.verifiedMoves ?? finalGame.moves,
-                    score: result.verifiedScore ?? get().currentGame?.score ?? finalGame.score,
-                    verified: true,
+                    runId: roomRunId,
                   }).catch((roomError) => {
                     sendTelemetry({
                       type: 'error',
@@ -957,7 +971,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ currentEra: era, currentLevel: level });
   },
 
-  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false) => {
+  startLevelGame: async (era: Difficulty, level: number, isDailyChallenge = false, options = {}) => {
     set({ isGameLoading: true });
     try {
       const actions = buildLevelActions(era, level);
@@ -977,7 +991,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
             },
             difficulty: era,
             level,
-            challengeMode: isDailyChallenge ? 'daily' : 'standard',
+            // A boss hunt is open past the level gate while its window runs.
+            challengeMode: isDailyChallenge ? 'daily' : options.boss ? 'boss' : 'standard',
             requestedSeed: dailySeed,
           });
           verifiedRunId = verifiedRun.runId;
@@ -1007,20 +1022,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
         replayMoves:               [],
         gameStartMs:               Date.now(),
         isDailyChallenge,
-        challengeMode:             isDailyChallenge ? 'daily' : 'standard',
+        challengeMode:             isDailyChallenge ? 'daily' : options.boss ? 'boss' : 'standard',
         challengeSeed:             dailySeed ?? null,
         newlyUnlockedAchievements: [],
         lastRunAnalytics:          null,
         shieldCharges:             actions.shields,
         shieldBlocksUsed:          0,
-        hintCharges:               actions.hints,
+        hintCharges:               actions.hints + get().bankedPowers.hint,
         hintUses:                  0,
         hintPairIndices:           [],
-        freezeCharges:             actions.freezes,
+        freezeCharges:             actions.freezes + get().bankedPowers.freeze,
         freezeBurstsUsed:          0,
         trapCharges:               actions.traps,
         trapReshufflesUsed:        0,
-        multiplierCharges:         actions.multipliers,
+        multiplierCharges:         actions.multipliers + get().bankedPowers.boost,
+        levelPowers:               { hint: actions.hints, freeze: actions.freezes, boost: actions.multipliers },
         pendingMultiplier:         1,
         multiplierMatches:         0,
         hiddenCardIndices:         [],
@@ -1087,14 +1103,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         lastRunAnalytics:          null,
         shieldCharges:             actions.shields,
         shieldBlocksUsed:          0,
-        hintCharges:               actions.hints,
+        hintCharges:               actions.hints + get().bankedPowers.hint,
         hintUses:                  0,
         hintPairIndices:           [],
-        freezeCharges:             actions.freezes,
+        freezeCharges:             actions.freezes + get().bankedPowers.freeze,
         freezeBurstsUsed:          0,
         trapCharges:               actions.traps,
         trapReshufflesUsed:        0,
-        multiplierCharges:         actions.multipliers,
+        multiplierCharges:         actions.multipliers + get().bankedPowers.boost,
+        levelPowers:               { hint: actions.hints, freeze: actions.freezes, boost: actions.multipliers },
         pendingMultiplier:         1,
         multiplierMatches:         0,
         hiddenCardIndices:         [],
@@ -1129,6 +1146,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             level: room.level,
             challengeMode: 'room',
             requestedSeed: room.seed,
+            roomId: room.id,
           });
           verifiedRunId = verifiedRun.runId;
         } catch (error: any) {
@@ -1162,14 +1180,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         lastRunAnalytics:          null,
         shieldCharges:             actions.shields,
         shieldBlocksUsed:          0,
-        hintCharges:               actions.hints,
+        hintCharges:               actions.hints + get().bankedPowers.hint,
         hintUses:                  0,
         hintPairIndices:           [],
-        freezeCharges:             actions.freezes,
+        freezeCharges:             actions.freezes + get().bankedPowers.freeze,
         freezeBurstsUsed:          0,
         trapCharges:               actions.traps,
         trapReshufflesUsed:        0,
-        multiplierCharges:         actions.multipliers,
+        multiplierCharges:         actions.multipliers + get().bankedPowers.boost,
+        levelPowers:               { hint: actions.hints, freeze: actions.freezes, boost: actions.multipliers },
         pendingMultiplier:         1,
         multiplierMatches:         0,
         hiddenCardIndices:         [],
@@ -1205,9 +1224,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         last_name: telegramUser.last_name,
       });
 
-      if (remote.length > 0) {
-        remote.forEach((entry) => saveLevelProgress(entry));
-      }
+      // The server's progress is what its level gate reads, so it replaces
+      // the local copy outright. Merging would keep local-only unlocks that
+      // the server then refuses to start a verified run on.
+      replaceLevelProgress(remote);
     } catch (error: any) {
       sendTelemetry({
         type: 'error',
@@ -1216,7 +1236,60 @@ export const useGameStore = create<GameStore>((set, get) => ({
       });
     }
 
+    // Streak, achievements and banked power-ups are the server's. The local
+    // copies are only a cache for the first paint and for offline play.
+    try {
+      const state = await fetchPlayerState({
+        id: telegramUser.id,
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+      });
+      adoptServerStreak(state.streak);
+      adoptServerAchievements(state.achievements, { merge: true });
+      set({ bankedPowers: { ...state.powers } });
+    } catch (error: any) {
+      sendTelemetry({
+        type: 'error',
+        source: 'state-load',
+        message: error.message || 'Failed to load player state',
+      });
+    }
+
     set({ levelProgress: getAllLevelProgress(), streak: loadStreak(), relicRewards: getRelicRewards() });
+  },
+
+  drawPower: (kind) => {
+    const { levelPowers, bankedPowers, telegramUser } = get();
+    if (levelPowers[kind] > 0) {
+      set({ levelPowers: { ...levelPowers, [kind]: levelPowers[kind] - 1 } });
+      return;
+    }
+    if (bankedPowers[kind] <= 0) return;
+
+    // Optimistic: the charge is gone locally at once, and the server's count
+    // replaces it when the spend lands. A failed spend is reported, not
+    // undone mid-game.
+    set({ bankedPowers: { ...bankedPowers, [kind]: bankedPowers[kind] - 1 } });
+    if (!telegramUser) return;
+    spendPowerUp(
+      {
+        id: telegramUser.id,
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+      },
+      kind,
+    )
+      .then((remaining) => set((state) => ({ bankedPowers: { ...state.bankedPowers, [kind]: remaining } })))
+      .catch((error) => {
+        sendTelemetry({
+          type: 'error',
+          source: 'power-spend',
+          message: error.message || 'Failed to spend power-up',
+          metadata: { kind },
+        });
+      });
   },
 
   useHint: () => {
@@ -1224,6 +1297,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!currentGame || hintCharges <= 0 || isChecking) return;
     const pair = findHintPair(currentGame.cards);
     if (pair.length !== 2) return;
+    get().drawPower('hint');
     set((state) => ({
       hintCharges: state.hintCharges - 1,
       hintUses: state.hintUses + 1,
@@ -1235,6 +1309,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   useFreeze: () => {
     const { currentGame, freezeCharges } = get();
     if (!currentGame || freezeCharges <= 0) return;
+    get().drawPower('freeze');
     set((state) => ({
       currentGame: { ...state.currentGame!, started_at: state.currentGame!.started_at + 5000 },
       freezeCharges: state.freezeCharges - 1,
@@ -1257,6 +1332,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   armMultiplier: () => {
     const { multiplierCharges, pendingMultiplier } = get();
     if (multiplierCharges <= 0 || pendingMultiplier > 1) return;
+    get().drawPower('boost');
     set((state) => ({
       multiplierCharges: state.multiplierCharges - 1,
       pendingMultiplier: 2,

@@ -52,3 +52,7 @@ venv/
 frontend/.test-dist/
 .vercel
 .env*
+
+# Local TLS certificates (e.g. from mkcert). Never commit private keys.
+*.pem
+*.key

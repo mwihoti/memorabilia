@@ -39,6 +39,18 @@ export default defineConfig({
   build: {
     target: 'esnext',
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        // React and Framer Motion change far less often than the game, so a
+        // deploy that only touches game code leaves these cached on the phone.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react'
+          if (id.includes('node_modules/framer-motion') || id.includes('node_modules/motion-')) return 'motion'
+          return undefined
+        },
+      },
+    },
   },
   define: {
     'process.env': {},

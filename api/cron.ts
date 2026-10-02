@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, ensureDb } from './_db';
 import { logApiError } from './_telemetry';
+import { pruneRateLimits } from './_rateLimit';
 import {
   getWeekKey,
   getWeekStart,
@@ -332,6 +333,8 @@ async function tick() {
   if (!openBoss.length) {
     results.boss = await bossRotate();
   }
+
+  results.rateLimitsPruned = await pruneRateLimits();
 
   return { job: 'tick', ran: results };
 }

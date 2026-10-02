@@ -25,6 +25,8 @@ export interface RunFacts {
   maxCombo: number;
   medal: string;
   isDailyChallenge: boolean;
+  /** Only a run started in `boss` mode is on the event's shared board. */
+  isBossRun: boolean;
 }
 
 export interface RewardOutcome {
@@ -141,12 +143,17 @@ export async function applyRunRewards(facts: RunFacts): Promise<RewardOutcome> {
 
   /* ── Boss event ────────────────────────────────────────────────────────── */
 
-  const bossRows = (await sql`
-    SELECT id, relic_id FROM boss_events
-    WHERE era = ${facts.era} AND level = ${facts.level}
-      AND opens_at <= NOW() AND closes_at > NOW()
-    LIMIT 1
-  `) as any[];
+  // A clear of the boss level on any other board does not count: the hunt is
+  // a race on one shared layout, and a fresh seed could be rerolled for an
+  // easy one.
+  const bossRows = facts.isBossRun
+    ? ((await sql`
+        SELECT id, relic_id FROM boss_events
+        WHERE era = ${facts.era} AND level = ${facts.level}
+          AND opens_at <= NOW() AND closes_at > NOW()
+        LIMIT 1
+      `) as any[])
+    : [];
 
   if (bossRows.length) {
     await sql`
