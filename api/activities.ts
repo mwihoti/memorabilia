@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, ensureDb } from './_db';
+import { newBoardSeed, newRoomCode } from './_roomCode';
+import { normalizeRoomCode } from '../shared/deepLinks';
+import { isValidLevel } from '../shared/gameRules';
 import { requireTelegramUser, AuthError } from './_auth';
 import { getClientKey, rateLimit } from './_rateLimit';
 import { logApiError } from './_telemetry';
@@ -230,7 +233,7 @@ function groupDuels(rows: any[], me: bigint | null) {
 /* ── Write ───────────────────────────────────────────────────────────────── */
 
 async function handleAction(req: VercelRequest, res: VercelResponse) {
-  const limit = rateLimit(`activities:${getClientKey(req)}`, 30, 60_000);
+  const limit = await rateLimit(`activities:${getClientKey(req)}`, 30, 60_000);
   if (!limit.allowed) {
     return res.status(429).json({ message: 'Too many requests', retryAfter: limit.retryAfter });
   }
@@ -252,21 +255,22 @@ async function handleAction(req: VercelRequest, res: VercelResponse) {
 }
 
 async function createDuel(req: VercelRequest, res: VercelResponse, user: any, tid: bigint) {
-  const { difficulty, level, seed, displayName } = req.body as {
+  const { difficulty, level, displayName } = req.body as {
     difficulty: number;
     level: number;
-    seed: number;
     displayName: string;
   };
 
-  if (!difficulty || !level) return res.status(400).json({ message: 'Missing difficulty or level' });
+  if (!isValidLevel(Number(difficulty), Number(level))) {
+    return res.status(400).json({ message: 'No such level' });
+  }
 
-  const id = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const id = newRoomCode();
   const expires = duelExpiry();
 
   await sql`
     INSERT INTO challenge_rooms (id, host_telegram_id, difficulty, level, seed, status, mode, expires_at, started_at)
-    VALUES (${id}, ${tid}, ${difficulty}, ${level}, ${seed ?? Math.floor(Math.random() * 2_000_000_000)},
+    VALUES (${id}, ${tid}, ${difficulty}, ${level}, ${newBoardSeed()},
             'live', 'duel', ${expires.toISOString()}, NOW())
   `;
   await sql`
@@ -279,10 +283,11 @@ async function createDuel(req: VercelRequest, res: VercelResponse, user: any, ti
 
 async function acceptDuel(req: VercelRequest, res: VercelResponse, user: any, tid: bigint) {
   const { duelId, displayName } = req.body as { duelId: string; displayName: string };
-  if (!duelId) return res.status(400).json({ message: 'Missing duelId' });
+  const code = normalizeRoomCode(duelId);
+  if (!code) return res.status(400).json({ message: 'Missing or invalid duel code' });
 
   const rooms = (await sql`
-    SELECT id, expires_at, mode FROM challenge_rooms WHERE id = ${duelId.toUpperCase()}
+    SELECT id, expires_at, mode FROM challenge_rooms WHERE id = ${code}
   `) as any[];
   const room = rooms[0];
 

@@ -12,7 +12,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
 
-  const limit = rateLimit(`progress:${getClientKey(req)}`, 120, 60_000);
+  const limit = await rateLimit(`progress:${getClientKey(req)}`, 120, 60_000);
   if (!limit.allowed) {
     return res.status(429).json({ message: 'Too many progress requests', retryAfter: limit.retryAfter });
   }
@@ -20,8 +20,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await ensureDb();
 
-    const { action, telegramUser, progress, initData } = req.body as {
-      action: 'load' | 'save';
+    const { action, telegramUser, progress, power, initData } = req.body as {
+      action: 'load' | 'save' | 'state' | 'power.use';
+      power?: 'hint' | 'freeze' | 'boost';
       telegramUser: { id: number; username?: string; first_name: string; last_name?: string };
       progress?: {
         era: number;
@@ -38,9 +39,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!telegramUser?.id || !action) return res.status(400).json({ message: 'Missing required fields' });
 
-    await requireTelegramUser({ telegramUser, initData });
+    const verifiedUser = await requireTelegramUser({ telegramUser, initData });
 
-    const tid = BigInt(telegramUser.id);
+    const tid = BigInt(verifiedUser.id);
     await sql`
       INSERT INTO users (telegram_id, username, first_name, last_name)
       VALUES (${tid}, ${telegramUser.username ?? null}, ${telegramUser.first_name ?? null}, ${telegramUser.last_name ?? null})
@@ -72,45 +73,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    if (!progress) return res.status(400).json({ message: 'Missing progress payload' });
+    if (action === 'state') {
+      return res.status(200).json(await loadPlayerState(tid));
+    }
 
-    await sql`
-      INSERT INTO player_progress (telegram_id, era, level, completed, best_score, best_time, best_medal, stars, completed_at, updated_at)
-      VALUES (
-        ${tid},
-        ${progress.era},
-        ${progress.level},
-        ${progress.completed},
-        ${progress.bestScore},
-        ${progress.bestTime},
-        ${progress.bestMedal},
-        ${progress.stars},
-        ${progress.completedAt ? new Date(progress.completedAt) : null},
-        NOW()
-      )
-      ON CONFLICT (telegram_id, era, level) DO UPDATE SET
-        completed = player_progress.completed OR EXCLUDED.completed,
-        best_score = GREATEST(player_progress.best_score, EXCLUDED.best_score),
-        best_time = CASE
-          WHEN player_progress.best_time = 0 THEN EXCLUDED.best_time
-          ELSE LEAST(player_progress.best_time, EXCLUDED.best_time)
-        END,
-        best_medal = CASE
-          WHEN player_progress.best_medal = 'gold' THEN player_progress.best_medal
-          WHEN player_progress.best_medal = 'silver' AND EXCLUDED.best_medal IN ('gold') THEN EXCLUDED.best_medal
-          WHEN player_progress.best_medal = 'bronze' AND EXCLUDED.best_medal IN ('gold', 'silver') THEN EXCLUDED.best_medal
-          WHEN player_progress.best_medal = 'none' THEN EXCLUDED.best_medal
-          ELSE player_progress.best_medal
-        END,
-        stars = GREATEST(player_progress.stars, EXCLUDED.stars),
-        completed_at = COALESCE(player_progress.completed_at, EXCLUDED.completed_at),
-        updated_at = NOW()
-    `;
+    if (action === 'power.use') {
+      const column = POWER_COLUMNS[power ?? ('' as never)];
+      if (!column) return res.status(400).json({ message: 'Unknown power-up' });
 
-    return res.status(200).json({ success: true });
+      // Decrement only while there is a charge to spend, so a replayed or
+      // concurrent request can never take a balance below zero.
+      const rows = (await sql(
+        `UPDATE users SET ${column} = ${column} - 1
+         WHERE telegram_id = $1 AND ${column} > 0
+         RETURNING ${column} AS remaining`,
+        [tid],
+      )) as Array<{ remaining: number }>;
+      if (!rows.length) return res.status(409).json({ message: 'No charges left', remaining: 0 });
+      return res.status(200).json({ success: true, remaining: Number(rows[0].remaining) });
+    }
+
+    if (action !== 'save') return res.status(400).json({ message: 'Unknown action' });
+
+    // Progress is written by scores.ts from verified runs, and run-session
+    // gates levels on it, so a client-supplied row is never stored. Older
+    // clients still call this after every clear; answer them without error.
+    void progress;
+    return res.status(200).json({ success: true, ignored: true });
   } catch (error: any) {
     if (error instanceof AuthError) return res.status(401).json({ message: error.message });
     await logApiError('progress', error);
     return res.status(500).json({ message: error.message || 'Internal server error' });
   }
+}
+
+/** Columns are interpolated into SQL, so only these exact names are allowed. */
+const POWER_COLUMNS: Record<string, string> = {
+  hint: 'power_hint',
+  freeze: 'power_freeze',
+  boost: 'power_boost',
+};
+
+/**
+ * Everything the server keeps about a player's progression, in one read, so a
+ * fresh device starts from the same place as the last one.
+ */
+async function loadPlayerState(tid: bigint) {
+  const [userRows, achievementRows, relicRows] = await Promise.all([
+    sql`
+      SELECT streak_current, streak_longest, streak_last_date,
+             power_hint, power_freeze, power_boost
+      FROM users WHERE telegram_id = ${tid}
+    `,
+    sql`
+      SELECT achievement_id, unlocked_at FROM player_achievements
+      WHERE telegram_id = ${tid} ORDER BY unlocked_at ASC
+    `,
+    sql`
+      SELECT relic_id FROM player_relics
+      WHERE telegram_id = ${tid} ORDER BY earned_at ASC
+    `,
+  ]);
+
+  const u = (userRows as any[])[0] ?? {};
+  return {
+    streak: {
+      current: Number(u.streak_current ?? 0),
+      longest: Number(u.streak_longest ?? 0),
+      lastDate: u.streak_last_date ? new Date(u.streak_last_date).toISOString().slice(0, 10) : null,
+    },
+    powers: {
+      hint: Number(u.power_hint ?? 0),
+      freeze: Number(u.power_freeze ?? 0),
+      boost: Number(u.power_boost ?? 0),
+    },
+    achievements: (achievementRows as any[]).map((row) => ({
+      id: String(row.achievement_id),
+      unlockedAt: new Date(row.unlocked_at).getTime(),
+    })),
+    relics: (relicRows as any[]).map((row) => String(row.relic_id)),
+  };
 }

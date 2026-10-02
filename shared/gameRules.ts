@@ -200,9 +200,12 @@ export function calculateVerifiedScore(
 }
 
 export function getDailyChallengeConfigFromDate(dateKey: string): { difficulty: DifficultyId; level: number; seed: number } {
+  // A YYYY-MM-DD key parses as UTC midnight. Read it back in UTC too, or a
+  // player west of Greenwich gets the previous day's board while the server,
+  // which runs in UTC, verifies against today's.
   const date = new Date(dateKey);
-  const dayOfWeek = date.getDay();
-  const dayOfMonth = date.getDate();
+  const dayOfWeek = date.getUTCDay();
+  const dayOfMonth = date.getUTCDate();
   const difficulty = DIFFICULTY_ORDER[dayOfWeek % DIFFICULTY_ORDER.length];
   const level = (dayOfMonth % LEVEL_COUNT_BY_ERA[difficulty]) + 1;
   const seed = parseInt(dateKey.replace(/-/g, ''), 10);
@@ -211,16 +214,16 @@ export function getDailyChallengeConfigFromDate(dateKey: string): { difficulty: 
 
 function getWeekStart(date: Date): Date {
   const copy = new Date(date);
-  const day = (copy.getDay() + 6) % 7;
-  copy.setDate(copy.getDate() - day);
-  copy.setHours(0, 0, 0, 0);
+  const day = (copy.getUTCDay() + 6) % 7;
+  copy.setUTCDate(copy.getUTCDate() - day);
+  copy.setUTCHours(0, 0, 0, 0);
   return copy;
 }
 
 function getWeekKey(date: Date): string {
   const start = getWeekStart(date);
-  const year = start.getFullYear();
-  const startOfYear = new Date(year, 0, 1);
+  const year = start.getUTCFullYear();
+  const startOfYear = new Date(Date.UTC(year, 0, 1));
   const diffDays = Math.floor((start.getTime() - startOfYear.getTime()) / 86_400_000);
   const week = Math.floor(diffDays / 7) + 1;
   return `${year}-W${String(week).padStart(2, '0')}`;
@@ -231,12 +234,101 @@ export function getWeeklyChallengeConfigFromDate(dateKey: string): { difficulty:
   const weekStart = getWeekStart(today);
   const weekKey = getWeekKey(today);
   const seed = parseInt(
-    `${weekStart.getFullYear()}${String(weekStart.getMonth() + 1).padStart(2, '0')}${String(weekStart.getDate()).padStart(2, '0')}`,
+    `${weekStart.getUTCFullYear()}${String(weekStart.getUTCMonth() + 1).padStart(2, '0')}${String(weekStart.getUTCDate()).padStart(2, '0')}`,
     10,
   );
   const difficulty = DIFFICULTY_ORDER[seed % DIFFICULTY_ORDER.length];
   const level = (seed % LEVEL_COUNT_BY_ERA[difficulty]) + 1;
   return { difficulty, level, seed, weekKey };
+}
+
+function utcDateKey(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
+ * The daily or weekly boards a player could legitimately be on right now.
+ *
+ * The client picks its board from its own local date, and local dates run
+ * from UTC-12 to UTC+14, so anything from yesterday to tomorrow in UTC is a
+ * real board somewhere. Anything outside that window is a forged request.
+ */
+export function getChallengeCandidates(
+  mode: 'daily' | 'weekly',
+  nowMs: number = Date.now(),
+): Array<{ difficulty: DifficultyId; level: number; seed: number }> {
+  const out: Array<{ difficulty: DifficultyId; level: number; seed: number }> = [];
+  for (const offset of [-1, 0, 1]) {
+    const key = utcDateKey(nowMs + offset * 86_400_000);
+    const config = mode === 'daily' ? getDailyChallengeConfigFromDate(key) : getWeeklyChallengeConfigFromDate(key);
+    if (!out.some((c) => c.seed === config.seed && c.difficulty === config.difficulty && c.level === config.level)) {
+      out.push({ difficulty: config.difficulty, level: config.level, seed: config.seed });
+    }
+  }
+  return out;
+}
+
+export function isValidLevel(era: number, level: number): era is DifficultyId {
+  return (
+    Number.isInteger(era) &&
+    (DIFFICULTY_ORDER as readonly number[]).includes(era) &&
+    Number.isInteger(level) &&
+    level >= 1 &&
+    level <= LEVEL_COUNT_BY_ERA[era as DifficultyId]
+  );
+}
+
+/**
+ * Whether a level is open, given the levels a player has cleared.
+ *
+ * Mirrors what the level selector shows: the next level in an era opens when
+ * the one before it is cleared, and an era opens when the final level of the
+ * era before it is cleared. Shared so the server enforces the same gate.
+ */
+export function isLevelOpen(
+  era: DifficultyId,
+  level: number,
+  cleared: ReadonlyArray<{ era: number; level: number }>,
+): boolean {
+  if (level > 1) return cleared.some((c) => c.era === era && c.level === level - 1);
+
+  const index = DIFFICULTY_ORDER.indexOf(era);
+  if (index <= 0) return true;
+  const previousEra = DIFFICULTY_ORDER[index - 1];
+  const checkpoint = getEraUnlockCheckpoint(era);
+  return cleared.some((c) => c.era === previousEra && c.level >= checkpoint);
+}
+
+/** A run older than this is abandoned; submitting it later is not a play. */
+export const MAX_RUN_AGE_MS = 6 * 60 * 60 * 1000;
+
+/** Slack for request latency between the run starting and the clock starting. */
+const RUN_CLOCK_TOLERANCE_MS = 1_500;
+
+/**
+ * Check a replay's claimed duration against the server's own clock.
+ *
+ * The replay's timestamps come from the client, so on their own they prove
+ * nothing — a script can claim any pace. But the server knows when it issued
+ * the run, and a replay cannot have lasted longer than the time since then.
+ * Combined with the minimum flip interval, a bot has to actually spend the
+ * time it claims, which is what makes the leaderboard time honest.
+ */
+export function checkRunTiming(params: {
+  serverElapsedMs: number;
+  replayDurationMs: number;
+}): { ok: true } | { ok: false; reason: string } {
+  const { serverElapsedMs, replayDurationMs } = params;
+  if (!Number.isFinite(serverElapsedMs) || serverElapsedMs < 0) {
+    return { ok: false, reason: 'Run start time is unknown' };
+  }
+  if (serverElapsedMs > MAX_RUN_AGE_MS) {
+    return { ok: false, reason: 'This run has expired' };
+  }
+  if (replayDurationMs > serverElapsedMs + RUN_CLOCK_TOLERANCE_MS) {
+    return { ok: false, reason: 'Replay claims more time than has passed since the run began' };
+  }
+  return { ok: true };
 }
 
 function shuffleWithRng<T>(array: T[], rng: () => number): T[] {
@@ -397,6 +489,16 @@ export function buildLevelCardValues(era: DifficultyId, level: number, seed: num
   return violatesSpacing(arrangedValues, candidateColumns, config.minimumPairDistance) ? baseValues : arrangedValues;
 }
 
+/**
+ * Fastest gap allowed between the last flip of one turn and the first flip of
+ * the next. The client holds the board for 350ms while it checks a pair, so an
+ * honest replay never goes below this; a script replaying a solved board does.
+ */
+export const MIN_TURN_GAP_MS = 300;
+
+/** Upper bound on flips per card, so a replay cannot be arbitrarily long. */
+const MAX_FLIPS_PER_CARD = 40;
+
 export function verifyReplaySubmission(params: {
   difficulty: DifficultyId;
   level: number;
@@ -409,6 +511,35 @@ export function verifyReplaySubmission(params: {
 
   if (!replayMoves.length || replayMoves.length % 2 !== 0) {
     return { verified: false, reason: 'Replay must contain complete flip pairs', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
+  }
+
+  // Bound the work a single request can ask for. No honest clear comes close.
+  if (replayMoves.length > values.length * MAX_FLIPS_PER_CARD) {
+    return { verified: false, reason: 'Replay is implausibly long', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
+  }
+
+  for (let i = 0; i < replayMoves.length; i++) {
+    const move = replayMoves[i];
+    if (
+      !move ||
+      !Number.isInteger(move.cardIndex) ||
+      !Number.isFinite(move.timestamp) ||
+      move.timestamp < 0
+    ) {
+      return { verified: false, reason: 'Replay contains a malformed move', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
+    }
+    if (i > 0) {
+      const gap = move.timestamp - replayMoves[i - 1].timestamp;
+      if (gap < 0) {
+        return { verified: false, reason: 'Replay timestamps must be increasing', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
+      }
+      // Two flips in the same turn can land together (a two-finger tap), but
+      // the board locks while a pair is checked, so a new turn cannot start
+      // until that check has run.
+      if (i % 2 === 0 && gap < MIN_TURN_GAP_MS) {
+        return { verified: false, reason: 'Replay starts turns faster than the board allows', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
+      }
+    }
   }
 
   const matched = new Set<number>();
@@ -430,10 +561,6 @@ export function verifyReplaySubmission(params: {
 
     if (matched.has(first.cardIndex) || matched.has(second.cardIndex)) {
       return { verified: false, reason: 'Replay reused an already matched card', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
-    }
-
-    if (i > 0 && first.timestamp < replayMoves[i - 1].timestamp) {
-      return { verified: false, reason: 'Replay timestamps must be increasing', score: 0, stars: 0, timeSeconds: 0, moves: 0, maxCombo: 0, mismatches: 0 };
     }
 
     if (values[first.cardIndex] === values[second.cardIndex]) {

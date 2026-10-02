@@ -61,6 +61,44 @@ function saveStreak(streak: DailyStreak): void {
   }
 }
 
+function shiftDay(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The server counts streak days in UTC, but `recordGamePlayed` compares
+ * against the device's local date. Translate "today/yesterday in UTC" into
+ * "today/yesterday here", or a player west of UTC who plays in the evening
+ * would see the local streak reset on their next clear.
+ */
+function toLocalDay(serverDate: string | null): string {
+  if (!serverDate) return '';
+  const utcToday = new Date().toISOString().slice(0, 10);
+  const localToday = getToday();
+  const offset = Math.round((new Date(serverDate).getTime() - new Date(utcToday).getTime()) / 86_400_000);
+  return offset === 0 || offset === -1 ? shiftDay(localToday, offset) : serverDate;
+}
+
+/**
+ * Replace the local streak with the server's. The server advances the streak
+ * only on verified clears, so its numbers win; shields and the multiplier are
+ * derived from them the same way `recordGamePlayed` derives them.
+ */
+export function adoptServerStreak(server: { current: number; longest: number; lastDate: string | null }): DailyStreak {
+  const local = loadStreak();
+  const streak: DailyStreak = {
+    currentStreak: server.current,
+    longestStreak: Math.max(server.longest, server.current),
+    lastPlayedDate: toLocalDay(server.lastDate),
+    shieldsAvailable: computeShields(server.current, local.shieldsAvailable),
+    multiplierBonus: computeMultiplierBonus(server.current),
+  };
+  saveStreak(streak);
+  return streak;
+}
+
 export function recordGamePlayed(): DailyStreak {
   const today     = getToday();
   const streak    = loadStreak();

@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { timingSafeEqual } from 'node:crypto';
+import { parseStartPayload } from '../shared/deepLinks';
 import { sql, ensureDb } from './_db';
 
 const TOKEN    = process.env.BOT_TOKEN!;
@@ -217,23 +219,37 @@ async function registerContact(
 
   // /start
   if (text.startsWith('/start')) {
-    const ref = text.replace('/start', '').trim();
+    const payload = parseStartPayload(text.replace(/^\/start(@\w+)?/, '').trim());
 
-    if (ref.startsWith('theme_')) {
-      return sendMessage(chatId, themeText(ref.replace('theme_', '')), { reply_markup: KB_PLAY });
+    if (payload.kind === 'theme') {
+      return sendMessage(chatId, themeText(payload.theme), { reply_markup: KB_PLAY });
     }
 
     // ref_<telegramId> — the invite links the game hands out.
-    const inviterId = ref.startsWith('ref_') ? Number(ref.slice(4)) : null;
+    const inviterId = payload.kind === 'ref' ? payload.inviterId : null;
     let referred = false;
     try {
-      referred = await registerContact(
-        msg.from ?? { id: chatId },
-        chatId,
-        Number.isFinite(inviterId) ? inviterId : null,
-      );
+      referred = await registerContact(msg.from ?? { id: chatId }, chatId, inviterId);
     } catch {
       // Never let a bookkeeping failure stop someone opening the game.
+    }
+
+    // room_<code> — a challenge-room invite. The button opens the game
+    // straight into that room instead of the main menu.
+    if (payload.kind === 'room') {
+      const roomUrl = `${WEB_APP}?room=${payload.roomId}`;
+      return sendMessage(
+        chatId,
+        `⚔️ <b>${name}, you've been challenged!</b>\n\nRoom <b>${payload.roomId}</b> is waiting — same board for everyone, fastest verified clear wins.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: `⚔️  Join room ${payload.roomId}`, web_app: { url: roomUrl } }],
+              [{ text: '« Main Menu', callback_data: 'main' }],
+            ],
+          },
+        },
+      );
     }
 
     if (referred) {
@@ -316,6 +332,12 @@ async function handleCallbackQuery(cq: any) {
 
 // ── Vercel handler ────────────────────────────────────────────────────────────
 
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Health check
   if (req.method === 'GET') {
@@ -324,6 +346,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Telegram sends the secret given to setWebhook in this header on every
+  // update. Without the check anyone could POST a forged update — a fake
+  // `/start ref_<id>` for a real player's id would plant a referral and later
+  // collect its reward. Set TELEGRAM_WEBHOOK_SECRET and pass the same value as
+  // `secret_token` to setWebhook to turn it on.
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (secret && !safeEqual(String(req.headers['x-telegram-bot-api-secret-token'] ?? ''), secret)) {
+    return res.status(401).json({ ok: false });
   }
 
   try {

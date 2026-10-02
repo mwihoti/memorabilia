@@ -1,12 +1,22 @@
 import { motion } from 'framer-motion';
+import { getLaunchRoomId, referralLink, roomInviteLink } from '../lib/links';
+
+/**
+ * Where to send someone who opened the web URL outside Telegram. A room invite
+ * keeps its room, so a link pasted into a browser still lands in the duel.
+ */
+function telegramEntryLink(): string {
+  const roomId = getLaunchRoomId();
+  return roomId ? roomInviteLink(roomId) : referralLink(null);
+}
 
 export default function TelegramRequired() {
   const handleOpenInTelegram = () => {
-    window.location.href = 'https://t.me/memorabilia_game_bot/memorabilia_game';
+    window.location.href = telegramEntryLink();
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText('https://t.me/memorabilia_game_bot/memorabilia_game').then(() => {
+    navigator.clipboard.writeText(telegramEntryLink()).then(() => {
       alert('Link copied! Open it in Telegram.');
     });
   };
@@ -19,9 +29,9 @@ export default function TelegramRequired() {
   ];
 
   const features = [
-    { icon: '🏛️', label: 'Museum Theme' },
-    { icon: '🌿', label: 'Nature Theme' },
-    { icon: '🎨', label: 'Urban/Graffiti' },
+    { icon: '🏛️', label: '5 Eras' },
+    { icon: '⚔️', label: 'Duels & Rooms' },
+    { icon: '🛡️', label: 'Guilds' },
     { icon: '🏆', label: 'Leaderboard' },
     { icon: '⛓️', label: 'On-chain Starknet' },
     { icon: '📊', label: 'Score History' },

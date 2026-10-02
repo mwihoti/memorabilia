@@ -1,12 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ensureDb, sql } from './_db';
-import { requireTelegramUser } from './_auth';
+import { requireTelegramUser, AuthError } from './_auth';
+import { newBoardSeed, newRoomCode } from './_roomCode';
+import { isValidLevel } from '../shared/gameRules';
+import { normalizeRoomCode } from '../shared/deepLinks';
 import { getClientKey, rateLimit } from './_rateLimit';
 import { logApiError } from './_telemetry';
-
-function roomId() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
 
 async function verifyUser(body: any) {
   return requireTelegramUser(body);
@@ -103,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const limit = rateLimit(`challenge-room:${getClientKey(req)}`, 80, 60_000);
+  const limit = await rateLimit(`challenge-room:${getClientKey(req)}`, 80, 60_000);
   if (!limit.allowed) {
     return res.status(429).json({ message: 'Too many room requests', retryAfter: limit.retryAfter });
   }
@@ -124,11 +123,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const action = String(req.body?.action || '');
     const user = await verifyUser(req.body);
     const tid = await upsertUser(user);
-    const displayName = req.body?.displayName || user.first_name || user.username || `Player ${String(user.id).slice(-4)}`;
+    const displayName = String(
+      req.body?.displayName || user.first_name || user.username || `Player ${String(user.id).slice(-4)}`,
+    ).slice(0, 32);
 
     if (action === 'create') {
-      const { difficulty, level, seed } = req.body as { difficulty: number; level: number; seed: number };
-      const id = roomId();
+      const { difficulty, level } = req.body as { difficulty: number; level: number };
+      if (!isValidLevel(Number(difficulty), Number(level))) {
+        return res.status(400).json({ message: 'No such level' });
+      }
+      // The server deals the board, as it does for a rematch.
+      const seed = newBoardSeed();
+      const id = newRoomCode();
 
       await sql`
         INSERT INTO challenge_rooms (id, host_telegram_id, difficulty, level, seed)
@@ -144,10 +150,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(room);
     }
 
-    const roomIdParam = String(req.body?.roomId || '').toUpperCase();
-    if (!roomIdParam) return res.status(400).json({ message: 'Missing roomId' });
+    const roomIdParam = normalizeRoomCode(req.body?.roomId);
+    if (!roomIdParam) return res.status(400).json({ message: 'Missing or invalid roomId' });
+
+    // Duels live in the same table but have their own rules — two seats, an
+    // expiry — enforced by /api/activities. Keep the room actions off them.
+    const modeRows = (await sql`SELECT mode FROM challenge_rooms WHERE id = ${roomIdParam} LIMIT 1`) as Array<{ mode: string }>;
+    const isDuel = modeRows[0]?.mode === 'duel';
+    if (isDuel && action !== 'submit') {
+      return res.status(409).json({ message: 'That code is a duel — accept it from Activities' });
+    }
 
     if (action === 'join') {
+      if (!modeRows.length) return res.status(404).json({ message: 'Room not found' });
+
       await sql`
         INSERT INTO challenge_room_participants (room_id, telegram_id, display_name, status)
         VALUES (${roomIdParam}, ${tid}, ${displayName}, 'joined')
@@ -193,7 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!roomRows.length) return res.status(404).json({ message: 'Room not found' });
       if (BigInt(roomRows[0].host_telegram_id) !== tid) return res.status(403).json({ message: 'Only the host can start a rematch' });
 
-      const nextSeed = Math.floor(Math.random() * 2_000_000_000);
+      const nextSeed = newBoardSeed();
       await sql`
         UPDATE challenge_rooms
         SET
@@ -220,22 +236,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (action === 'submit') {
-      const { timeSeconds, moves, score, verified } = req.body as {
-        timeSeconds: number;
-        moves: number;
-        score: number;
-        verified: boolean;
-      };
+      // A room result is read from the verified run, never from the request.
+      // scores.ts has already replayed and checked it before the client gets
+      // here, so all this does is look the numbers up.
+      const runId = Number(req.body?.runId);
+      if (!Number.isSafeInteger(runId) || runId <= 0) {
+        return res.status(400).json({ message: 'Missing verified run' });
+      }
+
+      const results = (await sql`
+        SELECT g.score, g.moves, g.time_seconds
+        FROM run_sessions r
+        JOIN game_sessions g ON g.run_id = r.id AND g.verified = TRUE
+        JOIN challenge_rooms c ON c.id = r.room_id AND c.seed = r.seed
+        WHERE r.id = ${runId}
+          AND r.telegram_id = ${tid}
+          AND r.room_id = ${roomIdParam}
+          AND r.verification_status = 'verified'
+        LIMIT 1
+      `) as Array<{ score: number; moves: number; time_seconds: number }>;
+
+      if (!results.length) {
+        return res.status(400).json({ message: 'No verified run for this room' });
+      }
+      const result = results[0];
 
       await sql`
         UPDATE challenge_room_participants
         SET
           status = 'finished',
           finished_at = NOW(),
-          best_time_seconds = ${timeSeconds},
-          best_moves = ${moves},
-          best_score = ${score},
-          verified = ${verified}
+          best_time_seconds = ${result.time_seconds},
+          best_moves = ${result.moves},
+          best_score = ${result.score},
+          verified = TRUE
         WHERE room_id = ${roomIdParam} AND telegram_id = ${tid}
       `;
 
@@ -259,6 +293,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(400).json({ message: 'Invalid action' });
   } catch (error: any) {
+    if (error instanceof AuthError) return res.status(401).json({ message: error.message });
     await logApiError('challenge-room', error);
     const message = error.message?.startsWith('Unauthorized') ? error.message : error.message || 'Internal server error';
     const status = error.message?.startsWith('Unauthorized') ? 401 : 500;

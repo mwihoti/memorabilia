@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { ensureDb, sql } from './_db';
-import { getClientKey, rateLimit } from './_rateLimit';
+import { getClientKey, memoryRateLimit } from './_rateLimit';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,7 +10,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
 
-  const limit = rateLimit(`telemetry:${getClientKey(req)}`, 80, 60_000);
+  // Telemetry is fire-and-forget and already sheds load with a 202, so it
+  // keeps the cheap per-instance limiter instead of a database write.
+  const limit = memoryRateLimit(`telemetry:${getClientKey(req)}`, 80, 60_000);
   if (!limit.allowed) return res.status(202).json({ success: false });
 
   try {
