@@ -50,3 +50,5 @@ venv/
 
 # Test compilation output
 frontend/.test-dist/
+.vercel
+.env*

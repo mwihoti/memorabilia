@@ -116,7 +116,7 @@ export default function AppShell({ active, onNavigate, topSlot, children }: AppS
               Time-Travel Museum
             </div>
             <div className="text-[10px]" style={{ color: 'var(--mu-faint)' }}>
-              Memorabilia · Starknet
+              Memorabilia
             </div>
           </div>
         </div>

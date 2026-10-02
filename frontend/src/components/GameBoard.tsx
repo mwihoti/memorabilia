@@ -186,6 +186,14 @@ export default function GameBoard() {
   const columns = cardCount <= 16 ? 4 : isWide ? 6 : 4;
   const gridClass = cardCount <= 16 ? 'grid-cols-4' : 'grid-cols-4 sm:grid-cols-6';
 
+  // A fixed column count with no width cap makes cards grow without limit: an
+  // 8-card board on a 950px container rendered 215px cards that pushed the rest
+  // of the board off screen. Cap the grid at a size that keeps a card around
+  // 124px, and let it shrink freely below that on phones.
+  const MAX_CARD = 124;
+  const GUTTER = 10;
+  const maxBoardWidth = columns * MAX_CARD + (columns - 1) * GUTTER;
+
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const difficultyMeta = getDifficultyMeta(currentGame.difficulty);
 
@@ -203,7 +211,9 @@ export default function GameBoard() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    // Everything on this screen shares the board's measure. Letting the stats
+    // row run to 896px while the board capped at 526px read as two layouts.
+    <div className="mx-auto w-full" style={{ maxWidth: maxBoardWidth }}>
       {/* ── Era seed chip ─────────────────────────────────────────────────── */}
       <div className="mb-3 flex justify-center">
         <motion.span
@@ -274,7 +284,7 @@ export default function GameBoard() {
                   {formatTime(elapsedTime)}
                 </text>
               </svg>
-              {medalEmoji && <span className="text-base">{medalEmoji}</span>}
+              {elapsedTime > 0 && medalEmoji && <span className="text-base">{medalEmoji}</span>}
             </span>
           ) : (
             <span className="font-mono">{formatTime(elapsedTime)}</span>
@@ -440,7 +450,7 @@ export default function GameBoard() {
       <div className="mt-3 flex items-center justify-center gap-1.5 text-[0.7rem]" style={{ color: 'var(--mu-faint)' }}>
         <span>ⓘ</span>
         <span>
-          {currentGame.moves} moves · optimal {config.optimalMoves} · find all pairs to complete the
+          {currentGame.moves} moves · optimal {levelConfig?.optimalMoves ?? config.optimalMoves} · find all pairs to complete the
           round
         </span>
       </div>
