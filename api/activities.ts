@@ -10,6 +10,7 @@ import {
   planBossForWeek,
   duelExpiry,
   resolveDuel,
+  registerQuit,
   ALL_RELICS,
   DUEL_WINDOW_HOURS,
   BOSS_WINDOW_HOURS,
@@ -243,6 +244,8 @@ async function handleAction(req: VercelRequest, res: VercelResponse) {
       return await createDuel(req, res, user, tid);
     case 'duel.accept':
       return await acceptDuel(req, res, user, tid);
+    case 'game.quit':
+      return await reportQuit(res, tid);
     default:
       return res.status(400).json({ message: `Unknown action: ${action}` });
   }
@@ -307,4 +310,50 @@ async function acceptDuel(req: VercelRequest, res: VercelResponse, user: any, ti
   }
 
   return res.status(200).json({ id: room.id, expiresAt: room.expires_at });
+}
+
+/**
+ * Record an abandoned game and apply the serial-quitting penalty.
+ *
+ * Three quits in a row costs three season points. The count resets on the
+ * penalty, and `_rewards.ts` clears it whenever a level is actually finished,
+ * so this only bites someone who repeatedly walks out of boards.
+ *
+ * The penalty floors at zero — a season total must never go negative, or a new
+ * player who quits twice starts the season in debt.
+ */
+async function reportQuit(res: VercelResponse, tid: bigint) {
+  const rows = (await sql`
+    SELECT consecutive_quits FROM users WHERE telegram_id = ${tid}
+  `) as any[];
+
+  if (!rows.length) return res.status(404).json({ message: 'Unknown player' });
+
+  const verdict = registerQuit(Number(rows[0].consecutive_quits ?? 0));
+
+  await sql`
+    UPDATE users
+    SET consecutive_quits = ${verdict.strikes},
+        total_quits = total_quits + 1
+    WHERE telegram_id = ${tid}
+  `;
+
+  let newTotal: number | null = null;
+  if (verdict.penalty > 0) {
+    const season = getSeason();
+    const updated = (await sql`
+      UPDATE season_scores
+      SET points = GREATEST(0, points - ${verdict.penalty}), updated_at = NOW()
+      WHERE season_key = ${season.key} AND telegram_id = ${tid}
+      RETURNING points
+    `) as any[];
+    newTotal = updated.length ? Number(updated[0].points) : null;
+  }
+
+  return res.status(200).json({
+    strikes: verdict.strikes,
+    penalised: verdict.penalised,
+    penalty: verdict.penalty,
+    seasonPoints: newTotal,
+  });
 }

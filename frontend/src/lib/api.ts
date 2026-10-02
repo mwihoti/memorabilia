@@ -482,3 +482,15 @@ export function joinGuild(params: {
 export function leaveGuild(params: { telegramUser: SubmitScoreParams['telegramUser'] }) {
   return postGuild<{ left: boolean }>({ action: 'leave', ...params });
 }
+
+export interface QuitResult {
+  strikes: number;
+  penalised: boolean;
+  penalty: number;
+  seasonPoints: number | null;
+}
+
+/** Report an abandoned game. Three in a row costs three season points. */
+export function reportQuit(telegramUser: SubmitScoreParams['telegramUser']) {
+  return postActivity<QuitResult>({ action: 'game.quit', telegramUser });
+}

@@ -321,6 +321,48 @@ export function addGrants(a: PowerGrant, b: PowerGrant): PowerGrant {
   return { hint: a.hint + b.hint, freeze: a.freeze + b.freeze, boost: a.boost + b.boost };
 }
 
+/* ── Quitting ────────────────────────────────────────────────────────────── */
+
+/** Quits in a row before a penalty lands. */
+export const QUIT_STRIKE_LIMIT = 3;
+
+/** Season points removed when the limit is reached. */
+export const QUIT_PENALTY_POINTS = 3;
+
+export interface QuitVerdict {
+  /** Consecutive quits after this one, already reset if a penalty fired. */
+  strikes: number;
+  /** Season points to remove — 0 unless the limit was reached. */
+  penalty: number;
+  /** True on the quit that triggered the penalty. */
+  penalised: boolean;
+}
+
+/**
+ * Register an abandoned game.
+ *
+ * Three quits in a row costs three season points, then the count resets so the
+ * next penalty needs three fresh quits rather than one. Completing a level
+ * clears the count — see `clearQuitStrikes`.
+ *
+ * Season points are the right thing to dock: they are a running total a player
+ * accumulates, unlike `best_score`, which is a record and would be nonsense to
+ * decrement.
+ */
+export function registerQuit(previousStrikes: number): QuitVerdict {
+  const strikes = Math.max(0, previousStrikes) + 1;
+
+  if (strikes >= QUIT_STRIKE_LIMIT) {
+    return { strikes: 0, penalty: QUIT_PENALTY_POINTS, penalised: true };
+  }
+  return { strikes, penalty: 0, penalised: false };
+}
+
+/** Finishing a level wipes the slate — the penalty targets serial quitting. */
+export function clearQuitStrikes(): number {
+  return 0;
+}
+
 /* ── Streaks ─────────────────────────────────────────────────────────────── */
 
 export interface StreakState {

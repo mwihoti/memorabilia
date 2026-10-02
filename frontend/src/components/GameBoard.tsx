@@ -6,8 +6,16 @@ import { getPlayerSettings, getPreviewMultiplier } from '../store/settings';
 import { getCardSkin } from '../theme/cardSkins';
 import Card from './Card';
 import ComboDisplay from './ComboDisplay';
+import GameExitBar from './GameExitBar';
 
-export default function GameBoard() {
+interface GameBoardProps {
+  /** Leave the board and return to the level list. */
+  onHome: () => void;
+  /** Abandon the run — counts as a quit. */
+  onQuit: () => void;
+}
+
+export default function GameBoard({ onHome, onQuit }: GameBoardProps) {
   const {
     currentGame,
     flippedCards,
@@ -214,6 +222,8 @@ export default function GameBoard() {
     // Everything on this screen shares the board's measure. Letting the stats
     // row run to 896px while the board capped at 526px read as two layouts.
     <div className="mx-auto w-full" style={{ maxWidth: maxBoardWidth }}>
+      <GameExitBar onHome={onHome} onQuit={onQuit} inGame />
+
       {/* ── Era seed chip ─────────────────────────────────────────────────── */}
       <div className="mb-3 flex justify-center">
         <motion.span

@@ -258,6 +258,15 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_season_scores_board ON season_scores(season_key, points DESC)`,
     ],
   },
+
+  {
+    id: 8,
+    name: 'quit-strikes',
+    statements: [
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS consecutive_quits INT NOT NULL DEFAULT 0`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS total_quits INT NOT NULL DEFAULT 0`,
+    ],
+  },
 ];
 
 /** Bookkeeping table the runner uses to know what has already applied. */

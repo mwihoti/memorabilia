@@ -86,6 +86,10 @@ export async function applyRunRewards(facts: RunFacts): Promise<RewardOutcome> {
 
   let grant = out.streakAdvanced ? streakGrant(after.current) : NO_GRANT;
 
+  // Finishing a level always clears the quit count, whether or not the streak
+  // advanced — the penalty is for walking out, not for playing twice in a day.
+  await sql`UPDATE users SET consecutive_quits = 0 WHERE telegram_id = ${tid}`;
+
   if (out.streakAdvanced) {
     await sql`
       UPDATE users

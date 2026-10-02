@@ -19,6 +19,21 @@ interface Contour {
   alpha: number;
 }
 
+/** A card drifting through the gallery, far behind everything else. */
+interface FloatCard {
+  x: number;
+  y: number;
+  w: number;
+  /** Radians. */
+  angle: number;
+  spin: number;
+  vy: number;
+  drift: number;
+  /** Phase offset so the sway and the spin are not in lockstep. */
+  phase: number;
+  alpha: number;
+}
+
 /** Dust mote caught in a light shaft. */
 interface Mote {
   x: number;
@@ -37,10 +52,10 @@ const prefersReducedMotion = () =>
 /**
  * The animated gallery behind every screen.
  *
- * Three layers on one canvas: slow topographic contours suggesting marble
- * veining, dust motes drifting upward through the light, and a pair of breathing
- * light shafts. Tinted by the active era so the room changes as the player
- * travels through time.
+ * Four layers on one canvas: a pair of breathing light shafts, slow topographic
+ * contours suggesting marble veining, ghost cards drifting upward, and dust
+ * motes rising through the light. Tinted by the active era so the room changes
+ * as the player travels through time.
  *
  * Costs: one rAF loop, capped at 30fps, paused when the tab is hidden, and
  * reduced to a single static paint when the viewer asks for less motion.
@@ -65,6 +80,7 @@ export default function MuseumBackground({ era = null, level = 1 }: MuseumBackgr
 
     let contours: Contour[] = [];
     let motes: Mote[] = [];
+    let cards: FloatCard[] = [];
 
     const seed = (era ?? 0) * 97 + 13;
     const rand = mulberry32(seed);
@@ -87,6 +103,24 @@ export default function MuseumBackground({ era = null, level = 1 }: MuseumBackgr
         width: 0.6 + rand() * 1.1,
         alpha: 0.05 + rand() * 0.09,
       }));
+
+      // Few and large: these read as depth, not as content. More than a handful
+      // and the eye starts trying to match them, which fights the real board.
+      const cardCount = w < 640 ? 4 : 7;
+      cards = Array.from({ length: cardCount }, () => {
+        const width = 46 + rand() * 54;
+        return {
+          x: rand() * w,
+          y: rand() * h,
+          w: width,
+          angle: (rand() - 0.5) * 0.8,
+          spin: (rand() - 0.5) * 0.00022,
+          vy: -(0.045 + rand() * 0.075),
+          drift: (rand() - 0.5) * 0.05,
+          phase: rand() * Math.PI * 2,
+          alpha: 0.05 + rand() * 0.07,
+        };
+      });
 
       const moteCount = w < 640 ? 18 : 42;
       motes = Array.from({ length: moteCount }, () => ({
@@ -125,6 +159,22 @@ export default function MuseumBackground({ era = null, level = 1 }: MuseumBackgr
           else ctx!.lineTo(x, y);
         }
         ctx!.stroke();
+      }
+
+      // ── Cards — drifting upward behind the dust ──────────────────────────
+      for (const c of cards) {
+        if (!reduced) {
+          c.y += c.vy;
+          c.x += c.drift + Math.sin(t * 0.00018 + c.phase) * 0.22;
+          c.angle += c.spin;
+          if (c.y < -c.w * 1.8) {
+            c.y = h + c.w * 1.8;
+            c.x = Math.random() * w;
+          }
+          if (c.x < -c.w * 2) c.x = w + c.w * 2;
+          if (c.x > w + c.w * 2) c.x = -c.w * 2;
+        }
+        drawCard(ctx!, c, skin.accent, reduced ? c.alpha : c.alpha * (0.75 + Math.sin(t * 0.0004 + c.phase) * 0.25));
       }
 
       // ── Motes — dust rising through the shafts ───────────────────────────
@@ -212,6 +262,67 @@ export default function MuseumBackground({ era = null, level = 1 }: MuseumBackgr
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
+
+/**
+ * One drifting card: a rounded rectangle at the game's 1:1.4 ratio, outlined
+ * rather than filled so it reads as a ghost behind the content.
+ */
+function drawCard(
+  ctx: CanvasRenderingContext2D,
+  card: FloatCard,
+  color: string,
+  alpha: number,
+) {
+  const w = card.w;
+  const h = w * 1.4;
+  const r = w * 0.12;
+
+  ctx.save();
+  ctx.translate(card.x, card.y);
+  ctx.rotate(card.angle);
+  roundedRect(ctx, -w / 2, -h / 2, w, h, r);
+  ctx.fillStyle = withAlpha(color, alpha * 0.35);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(color, alpha);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // The inlaid frame the real cards carry, so these read as the same object.
+  roundedRect(ctx, -w / 2 + w * 0.1, -h / 2 + w * 0.1, w * 0.8, h - w * 0.2, r * 0.6);
+  ctx.strokeStyle = withAlpha(color, alpha * 0.55);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Rounded rectangle path.
+ *
+ * `ctx.roundRect` is Chrome 99+; Telegram's Android WebView on older handsets
+ * predates it, and an exception thrown inside the animation loop would take the
+ * entire background down. Fall back to arcs there.
+ */
+function roundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r);
+    return;
+  }
+
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 /** A soft triangular wedge of light rising from the floor. */
 function drawShaft(

@@ -16,7 +16,7 @@ import { playFlipSound, playMatchSound, playMismatchSound, playVictorySound } fr
 import { cartridgeController } from '../cartridge/CartridgeController';
 import { mintScoreNFT } from '../cartridge/nftMinter';
 import { addGameScore, saveLevelProgress, getAllLevelProgress, getRelicRewards, saveRelicReward } from './playerStorage';
-import { fetchPlayerProgress, savePlayerProgress, sendTelemetry, startVerifiedRun, submitChallengeRoomResult, submitScore } from '../lib/api';
+import { fetchPlayerProgress, reportQuit, savePlayerProgress, sendTelemetry, startVerifiedRun, submitChallengeRoomResult, submitScore } from '../lib/api';
 import { checkAndUnlockAchievements } from './achievementStore';
 import { loadStreak, recordGamePlayed } from './streakStore';
 import { getDailyChallengeConfig, getWeeklyChallengeConfig, saveDailyChallenge, saveWeeklyChallenge } from './dailyChallenge';
@@ -173,6 +173,10 @@ interface GameStore {
   activeChallengeRoomId: string | null;
   /** Relic ids awarded by the server on the last run — drives the win-screen toast. */
   serverRelics: string[];
+  /** Set when a quit just triggered the three-strike penalty, for the toast. */
+  lastQuitPenalty: { strikes: number; penalty: number; seasonPoints: number | null } | null;
+  /** Quits in a row, mirrored from the server so the UI can warn in advance. */
+  consecutiveQuits: number;
   /** Season points the last run was worth, as scored by the server. */
   seasonPointsEarned: number;
 
@@ -288,6 +292,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   verifiedRunId: null,
   activeChallengeRoomId: null,
   serverRelics: [],
+  lastQuitPenalty: null,
+  consecutiveQuits: 0,
   seasonPointsEarned: 0,
 
   // Setters
@@ -784,6 +790,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                     multiplierCharges: state.multiplierCharges + rewards.granted.boost,
                     serverRelics: rewards.relicsEarned,
                     seasonPointsEarned: rewards.seasonPoints,
+                    consecutiveQuits: 0,
                   }));
                 }
 
@@ -882,25 +889,46 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   
   abandonGame: async () => {
-    const { currentGame, gameController } = get();
+    const { currentGame, gameController, telegramUser } = get();
 
     if (!currentGame) {
       return;
     }
 
-    try {
-      // Only call blockchain if we have a controller
-      if (gameController) {
-        await gameController.abandonGame(currentGame.game_id);
-      }
+    // Clear the board first. Quitting must feel instant — the bookkeeping
+    // below is fire-and-forget and must never hold up the exit.
+    set({
+      currentGame: null,
+      flippedCards: [],
+      selectedDifficulty: null,
+      lastQuitPenalty: null,
+  consecutiveQuits: 0,
+    });
 
-      set({
-        currentGame: null,
-        flippedCards: [],
-        selectedDifficulty: null,
+    if (gameController) {
+      gameController.abandonGame(currentGame.game_id).catch((error) => {
+        debug('Failed to abandon on chain:', error);
       });
-    } catch (error) {
-      console.error('Failed to abandon game:', error);
+    }
+
+    if (telegramUser) {
+      reportQuit({
+        id: telegramUser.id,
+        username: telegramUser.username,
+        first_name: telegramUser.first_name,
+        last_name: telegramUser.last_name,
+      })
+        .then((result) => {
+          set({
+            consecutiveQuits: result.strikes,
+            lastQuitPenalty: result.penalised ? result : null,
+          });
+        })
+        .catch((error) => {
+          // A player must still be able to leave a board when the network is
+          // down; the strike simply is not recorded.
+          debug('Could not report quit:', error);
+        });
     }
   },
   

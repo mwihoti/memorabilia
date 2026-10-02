@@ -11,6 +11,9 @@ import {
   planBossForWeek,
   ALL_RELICS,
   hashString,
+  registerQuit,
+  QUIT_STRIKE_LIMIT,
+  QUIT_PENALTY_POINTS,
 } from '../../shared/activities.js';
 
 /* ── Week keys ───────────────────────────────────────────────────────────── */
@@ -192,4 +195,36 @@ test('relic catalogue has no duplicate ids or names within an era', () => {
 test('hash is stable and well distributed enough to pick a boss', () => {
   assert.equal(hashString('2026-W40'), hashString('2026-W40'));
   assert.notEqual(hashString('2026-W40'), hashString('2026-W41'));
+});
+
+/* ── Quitting ────────────────────────────────────────────────────────────── */
+
+test('penalty lands on the third quit in a row, not before', () => {
+  const first = registerQuit(0);
+  assert.equal(first.penalised, false);
+  assert.equal(first.penalty, 0);
+  assert.equal(first.strikes, 1);
+
+  const second = registerQuit(first.strikes);
+  assert.equal(second.penalised, false);
+  assert.equal(second.strikes, 2);
+
+  const third = registerQuit(second.strikes);
+  assert.equal(third.penalised, true);
+  assert.equal(third.penalty, QUIT_PENALTY_POINTS);
+});
+
+test('the count resets after a penalty, so the next one needs three fresh quits', () => {
+  const third = registerQuit(QUIT_STRIKE_LIMIT - 1);
+  assert.equal(third.penalised, true);
+  assert.equal(third.strikes, 0, 'a penalty must not leave the player one quit from another');
+
+  const fourth = registerQuit(third.strikes);
+  assert.equal(fourth.penalised, false, 'the very next quit cannot be penalised again');
+});
+
+test('a negative or corrupt strike count cannot produce a penalty immediately', () => {
+  const fromNegative = registerQuit(-5);
+  assert.equal(fromNegative.strikes, 1);
+  assert.equal(fromNegative.penalised, false);
 });

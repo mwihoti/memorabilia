@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from './store/gameStore';
 import { setupDojo, createBurnerAccount } from './dojo/setup';
 import { createGameController } from './dojo/gameController';
-import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp } from './telegram/telegram';
+import { initTelegramApp, getTelegramUser, getThemeColors, isTelegramWebApp, showConfirm } from './telegram/telegram';
 import { GhostReplay, Difficulty, getMaxLevelForEra } from './types';
 import { loadGhostReplay } from './store/ghostReplay';
 import { resolveStartupIntroState } from '../../shared/startupIntro.js';
@@ -71,6 +71,7 @@ function App() {
     clearNewAchievements,
     hydratePlayerProgress,
     startChallengeRoomGame,
+    abandonGame,
   } = useGameStore();
 
   useEffect(() => {
@@ -201,26 +202,31 @@ function App() {
   };
 
 
+  // Telegram's WebView blocks window.confirm in some clients, which left the
+  // nav silently doing nothing mid-game. showConfirm uses the native dialog
+  // and falls back to window.confirm outside Telegram.
   const handleBackToDifficulty = () => {
-    if (currentGame) {
-      if (confirm('Are you sure you want to quit the current game?')) {
-        resetGame();
-        setScreen('level-select');
-      }
-    } else {
+    if (!currentGame) {
       setScreen('level-select');
+      return;
     }
+    showConfirm('Leave this board? Quitting costs a strike.', (confirmed) => {
+      if (!confirmed) return;
+      abandonGame();
+      setScreen('level-select');
+    });
   };
 
   const handleLeaveGame = () => {
-    if (currentGame) {
-      if (confirm('Quit and return to menu?')) {
-        resetGame();
-        setScreen('farewell');
-      }
-    } else {
+    if (!currentGame) {
       setScreen('farewell');
+      return;
     }
+    showConfirm('Quit and return to the menu?', (confirmed) => {
+      if (!confirmed) return;
+      abandonGame();
+      setScreen('farewell');
+    });
   };
 
   const handleLevelStart = async (era: Difficulty, level: number, isDailyChallenge: boolean) => {
@@ -345,13 +351,6 @@ function App() {
       <AppShell
         active={navActive}
         onNavigate={handleNavigate}
-        topSlot={
-          screen === 'game' && currentGame ? (
-            <button onClick={handleLeaveGame} className="mu-btn-ghost px-3 py-1.5 text-sm">
-              ← Leave run
-            </button>
-          ) : null
-        }
       >
         {screen === 'level-select' && (
           <LevelSelector
@@ -365,7 +364,15 @@ function App() {
           <ChallengeRoom roomId={activeRoomId} onBack={handleLeaveRoom} onPlay={handleOpenRoom} />
         )}
 
-        {screen === 'game' && currentGame && !showLevelIntro && <GameBoard />}
+        {screen === 'game' && currentGame && !showLevelIntro && (
+          <GameBoard
+            onHome={() => setScreen('level-select')}
+            onQuit={async () => {
+              await abandonGame();
+              setScreen('level-select');
+            }}
+          />
+        )}
 
         {screen === 'activities' && (
           <Activities onPlayBoss={handlePlayBoss} onPlayDuel={handlePlayDuel} />
