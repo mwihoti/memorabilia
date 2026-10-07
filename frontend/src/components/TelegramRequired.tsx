@@ -33,7 +33,7 @@ export default function TelegramRequired() {
     { icon: '⚔️', label: 'Duels & Rooms' },
     { icon: '🛡️', label: 'Guilds' },
     { icon: '🏆', label: 'Leaderboard' },
-    { icon: '⛓️', label: 'On-chain Starknet' },
+    { icon: '📅', label: 'Daily Challenges' },
     { icon: '📊', label: 'Score History' },
   ];
 
@@ -57,7 +57,7 @@ export default function TelegramRequired() {
           </motion.div>
           <h1 className="text-4xl font-extrabold text-white tracking-tight">Memorabilia</h1>
           <p className="text-indigo-300 mt-1 text-sm font-medium tracking-wide uppercase">
-            On-chain Memory Card Game · Starknet
+            Memory Card Game · Inside Telegram
           </p>
         </motion.div>
 
@@ -155,7 +155,7 @@ export default function TelegramRequired() {
         </motion.div>
 
         <p className="text-center text-white/20 text-xs mt-5">
-          Memorabilia · Powered by Dojo on Starknet
+          Memorabilia · Free to play in Telegram
         </p>
       </div>
     </div>

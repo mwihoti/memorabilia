@@ -48,7 +48,7 @@ export default function FarewellScreen({ onPlayAgain }: FarewellScreenProps) {
   const stats = [
     { icon: '🎮', label: 'Come back anytime', value: 'We\'ll be here' },
     { icon: '🏆', label: 'Your scores are saved', value: 'Leaderboard lives on' },
-    { icon: '🔗', label: 'Powered by Starknet', value: 'On-chain forever' },
+    { icon: '🏺', label: 'Your relics stay yours', value: 'Collection kept safe' },
   ];
 
   return (
@@ -147,7 +147,7 @@ export default function FarewellScreen({ onPlayAgain }: FarewellScreenProps) {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
         >
-          Memorabilia · Built on Starknet
+          Memorabilia · The Time-Travel Museum
         </motion.p>
       </div>
     </div>

@@ -4,7 +4,6 @@ import Confetti from 'react-confetti';
 import { useGameStore } from '../store/gameStore';
 import { calculateStars, calculateGrade, DIFFICULTY_ORDER, GAME_CONFIGS, ERA_LEVEL_CONFIGS, getDifficultyMeta, getMaxLevelForEra, getMovesNeededForThreeStars, getTimeMedal, getTotalLevelCount } from '../types';
 import { hapticNotification } from '../telegram/telegram';
-import { isScoreEligibleForNFT } from '../cartridge/config';
 import { createDuel, fetchPlayerStats } from '../lib/api';
 import { loadGhostReplay } from '../store/ghostReplay';
 import MedalBadge from './MedalBadge';
@@ -26,12 +25,6 @@ const GRADE_STYLES: Record<string, string> = {
 export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: WinModalProps) {
   const {
     currentGame,
-    isWalletConnected,
-    isMinting,
-    mintTxHash,
-    mintError,
-    mintNFT,
-    clearMintError,
     telegramUser,
     playerName,
     theme,
@@ -76,9 +69,6 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
   const grade = calculateGrade(currentGame.score);
   const elapsedTime = Math.floor((Date.now() - currentGame.started_at) / 1000);
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-  const isEligibleForNFT = isScoreEligibleForNFT(currentGame.score);
-  const canMintNFT = isEligibleForNFT && isWalletConnected && !mintTxHash;
 
   const displayName = playerName || telegramUser?.first_name || 'Curator';
   const difficultyMeta = getDifficultyMeta(currentGame.difficulty);
@@ -490,61 +480,6 @@ export default function WinModal({ onClose, onNextLevel, onShowGhostReplay }: Wi
               {submitError && (
                 <div className="flex items-center gap-2 px-4 py-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-sm">
                   <span>⚠️</span><span>{submitError}</span>
-                </div>
-              )}
-
-              {/* NFT section */}
-              {isEligibleForNFT && (
-                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🏛️</span>
-                    <div>
-                      <p className="font-bold text-amber-400 text-sm">NFT Eligible</p>
-                      <p className="text-xs text-white/40">Score ≥ 10 · Mint your achievement</p>
-                    </div>
-                  </div>
-
-                  {!isWalletConnected && (
-                    <p className="text-xs text-amber-300">Connect your Cartridge wallet to mint</p>
-                  )}
-
-                  {mintTxHash && (
-                    <div className="bg-white/5 rounded-xl p-3 text-xs text-white/60 break-all">
-                      ✅ NFT Minted · Tx: {mintTxHash.slice(0, 10)}…{mintTxHash.slice(-6)}
-                    </div>
-                  )}
-
-                  {mintError && (
-                    <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-3 text-xs text-red-400">
-                      ❌ {mintError.includes('Validate') ? 'Validation failed — reconnect wallet and retry' : mintError}
-                      <button onClick={clearMintError} className="ml-2 underline opacity-70">Dismiss</button>
-                    </div>
-                  )}
-
-                  {canMintNFT && (
-                    <button
-                      onClick={() => { clearMintError(); mintNFT(); }}
-                      disabled={isMinting}
-                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-400 text-white transition-all disabled:opacity-50"
-                    >
-                      {isMinting ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Minting…
-                        </span>
-                      ) : 'Mint NFT 🏛️'}
-                    </button>
-                  )}
-
-                  {mintError && (
-                    <button
-                      onClick={() => { clearMintError(); mintNFT(); }}
-                      disabled={isMinting}
-                      className="w-full py-2.5 border border-red-500/40 rounded-xl text-red-400 text-sm font-bold hover:bg-red-900/20 transition-all"
-                    >
-                      {isMinting ? 'Retrying…' : '🔄 Retry Minting'}
-                    </button>
-                  )}
                 </div>
               )}
 

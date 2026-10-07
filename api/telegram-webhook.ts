@@ -114,9 +114,7 @@ const ABOUT_TEXT =
   '🏺 <b>400 levels</b> across Ancient, Medieval, Modern, Future and Mythic\n' +
   '✅ <b>Verified scores</b> — every run is replayed server-side before it counts\n' +
   '⚔️ <b>Duels, ladders and boss hunts</b> — weekly resets, nobody is locked out\n' +
-  '📱 <b>No install, no wallet</b> — it runs in this chat\n\n' +
-  'Settlement on <b>Starknet</b> is in progress; scores are verified today and ' +
-  'will be anchored on-chain once the world is deployed.';
+  '📱 <b>No install, no sign-up</b> — it runs in this chat';
 
 const HELP_TEXT =
   '📖 <b>How to Play Memorabilia</b>\n\n' +

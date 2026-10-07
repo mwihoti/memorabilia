@@ -119,7 +119,7 @@ bot.start(async (ctx) => {
 
   return ctx.reply(
     `🏛️ <b>Hey ${name}! Welcome to Memorabilia!</b>\n\n` +
-    `I'm your guide to the on-chain memory card game built on Starknet.\n\n` +
+    `I'm your guide to the Time-Travel Museum — a memory card game across five eras of history.\n\n` +
     `Flip cards, find matching pairs, and climb the <b>Hall of Fame</b>!\n\n` +
     `👇 What would you like to do?`,
     { parse_mode: 'HTML', reply_markup: KB_MAIN }
@@ -162,13 +162,11 @@ bot.command('themes', (ctx) => ctx.reply(
 
 bot.command('about', (ctx) => ctx.reply(
   '🏛️ <b>About Memorabilia</b>\n\n' +
-  'An on-chain memory card game where every move is recorded on <b>Starknet</b>.\n\n' +
-  '⚡ <b>Dojo Engine</b> — Provable game logic\n' +
-  '🔷 <b>Starknet</b> — Layer 2 blockchain\n' +
-  '🎨 <b>3 Visual Themes</b> — Museum, Nature, Urban\n' +
-  '📊 <b>Live leaderboard</b> — Powered by Neon PostgreSQL\n' +
-  '📱 <b>Telegram Mini App</b> — No install needed\n\n' +
-  '🚀 Built by a 6-person team for Starknet Game Jam',
+  'A memory game set in a museum of five eras, played inside Telegram.\n\n' +
+  '🏺 <b>400 levels</b> across Ancient, Medieval, Modern, Future and Mythic\n' +
+  '✅ <b>Verified scores</b> — every run is checked before it counts\n' +
+  '⚔️ <b>Duels, ladders and boss hunts</b> — weekly resets\n' +
+  '📱 <b>No install, no sign-up</b> — it runs in this chat',
   { parse_mode: 'HTML', reply_markup: KB_PLAY }
 ));
 
@@ -263,13 +261,11 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'about') {
     return ctx.editMessageText(
       '🏛️ <b>About Memorabilia</b>\n\n' +
-      'An on-chain memory card game built on <b>Starknet</b>.\n\n' +
-      '⚡ <b>Dojo Engine</b> — Provable game logic\n' +
-      '🔷 <b>Starknet</b> — Layer 2 blockchain\n' +
-      '🎨 <b>3 Visual Themes</b> — Museum, Nature, Urban\n' +
-      '📊 <b>Live leaderboard</b> — Neon PostgreSQL\n' +
-      '📱 <b>Telegram Mini App</b> — No install needed\n\n' +
-      '🚀 Built by a 6-person team for Starknet Game Jam',
+      'A memory game set in a museum of five eras, played inside Telegram.\n\n' +
+      '🏺 <b>400 levels</b> across Ancient, Medieval, Modern, Future and Mythic\n' +
+      '✅ <b>Verified scores</b> — every run is checked before it counts\n' +
+      '⚔️ <b>Duels, ladders and boss hunts</b> — weekly resets\n' +
+      '📱 <b>No install, no sign-up</b> — it runs in this chat',
       { parse_mode: 'HTML', reply_markup: KB_PLAY }
     );
   }
@@ -299,7 +295,7 @@ bot.on('text', async (ctx) => {
   if (['theme', 'museum', 'nature', 'urban', 'graffiti'].some(k => t.includes(k))) {
     return ctx.reply('🎨 Pick a theme 👇', { reply_markup: KB_THEME_PICK });
   }
-  if (['about', 'starknet', 'dojo', 'blockchain'].some(k => t.includes(k))) {
+  if (['about'].some(k => t.includes(k))) {
     return ctx.reply('Use /about for the full story 👇', { reply_markup: KB_MAIN });
   }
 

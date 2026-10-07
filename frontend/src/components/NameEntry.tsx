@@ -105,7 +105,7 @@ export default function NameEntry({ onContinue }: NameEntryProps) {
       >
         <span className="block h-px w-5 sm:w-8" style={{ background: 'var(--mu-gold-dim)' }} />
         <span className="mu-eyebrow text-center text-[0.6rem] sm:text-xs">
-          The On-Chain Museum Game
+          The Time-Travel Museum Game
         </span>
         <span className="block h-px w-5 sm:w-8" style={{ background: 'var(--mu-gold-dim)' }} />
       </motion.div>
